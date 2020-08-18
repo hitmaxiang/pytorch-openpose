@@ -12,6 +12,7 @@ from skimage.measure import label
 from src.model import handpose_model
 from src import util
 
+
 class Hand(object):
     def __init__(self, model_path):
         self.model = handpose_model()
@@ -72,6 +73,7 @@ class Hand(object):
             y, x = util.npmax(map_ori)
             all_peaks.append([x, y])
         return np.array(all_peaks)
+
 
 if __name__ == "__main__":
     hand_estimation = Hand('../model/hand_pose_model.pth')

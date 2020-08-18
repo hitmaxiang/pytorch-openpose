@@ -11,6 +11,7 @@ from torchvision import transforms
 from src import util
 from src.model import bodypose_model
 
+
 class Body(object):
     def __init__(self, model_path):
         self.model = bodypose_model()
@@ -91,12 +92,12 @@ class Body(object):
             peak_counter += len(peaks)
 
         # find connection in the specified sequence, center 29 is in the position 15
-        limbSeq = [[2, 3], [2, 6], [3, 4], [4, 5], [6, 7], [7, 8], [2, 9], [9, 10], \
-                   [10, 11], [2, 12], [12, 13], [13, 14], [2, 1], [1, 15], [15, 17], \
+        limbSeq = [[2, 3], [2, 6], [3, 4], [4, 5], [6, 7], [7, 8], [2, 9], [9, 10],
+                   [10, 11], [2, 12], [12, 13], [13, 14], [2, 1], [1, 15], [15, 17],
                    [1, 16], [16, 18], [3, 17], [6, 18]]
         # the middle joints heatmap correpondence
-        mapIdx = [[31, 32], [39, 40], [33, 34], [35, 36], [41, 42], [43, 44], [19, 20], [21, 22], \
-                  [23, 24], [25, 26], [27, 28], [29, 30], [47, 48], [49, 50], [53, 54], [51, 52], \
+        mapIdx = [[31, 32], [39, 40], [33, 34], [35, 36], [41, 42], [43, 44], [19, 20], [21, 22],
+                  [23, 24], [25, 26], [27, 28], [29, 30], [47, 48], [49, 50], [53, 54], [51, 52],
                   [55, 56], [37, 38], [45, 46]]
 
         connection_all = []
@@ -118,13 +119,13 @@ class Body(object):
                         norm = math.sqrt(vec[0] * vec[0] + vec[1] * vec[1])
                         vec = np.divide(vec, norm)
 
-                        startend = list(zip(np.linspace(candA[i][0], candB[j][0], num=mid_num), \
+                        startend = list(zip(np.linspace(candA[i][0], candB[j][0], num=mid_num),
                                             np.linspace(candA[i][1], candB[j][1], num=mid_num)))
 
-                        vec_x = np.array([score_mid[int(round(startend[I][1])), int(round(startend[I][0])), 0] \
-                                          for I in range(len(startend))])
-                        vec_y = np.array([score_mid[int(round(startend[I][1])), int(round(startend[I][0])), 1] \
-                                          for I in range(len(startend))])
+                        vec_x = np.array([score_mid[int(round(startend[k][1])), int(round(startend[k][0])), 0]
+                                          for k in range(len(startend))])
+                        vec_y = np.array([score_mid[int(round(startend[k][1])), int(round(startend[k][0])), 1]
+                                          for k in range(len(startend))])
 
                         score_midpts = np.multiply(vec_x, vec[0]) + np.multiply(vec_y, vec[1])
                         score_with_dist_prior = sum(score_midpts) / len(score_midpts) + min(
@@ -205,6 +206,7 @@ class Body(object):
         # subset: n*20 array, 0-17 is the index in candidate, 18 is the total score, 19 is the total parts
         # candidate: x, y, score, id
         return candidate, subset
+
 
 if __name__ == "__main__":
     body_estimation = Body('../model/body_pose_model.pth')
