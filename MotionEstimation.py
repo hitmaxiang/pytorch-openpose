@@ -19,18 +19,27 @@ def EstimationVideo(inputfile):
 
     # open the video and read every frame data
     videofile = cv2.VideoCapture(inputfile)
-
     if not videofile.isOpened():
         raise Exception("the video file can not be open")
     
     RECPOINT = ((400, 100), (640, 400))
     COUNT = videofile.get(cv2.CAP_PROP_FRAME_COUNT)
+
+    size = (RECPOINT[1][0]-RECPOINT[0][0], RECPOINT[1][1]-RECPOINT[0][1])
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    VideoWriter = cv2.VideoWriter('body.avi', fourcc, 30, size)
+
+    begin = time.time()
+    number = 0
     while True:
-        randframe = np.random.randint(COUNT)
-        videofile.set(cv2.CAP_PROP_POS_FRAMES, randframe)
+        # randframe = np.random.randint(COUNT)
+        # videofile.set(cv2.CAP_PROP_POS_FRAMES, randframe)
+        # print(randframe)
         ret, frame = videofile.read()
         if ret is False:
             break
+        print('%d/%d' % (number, int(COUNT)), end='\r')
+        number += 1
         # cv2.rectangle(frame, RECPOINT[0], RECPOINT[1], [0, 0, 255], 2)
         img = frame[RECPOINT[0][1]:RECPOINT[1][1], RECPOINT[0][0]:RECPOINT[1][0], :]
         # cv2.imwrite('%d.jpg' % randframe, img)
@@ -40,14 +49,38 @@ def EstimationVideo(inputfile):
         if key == ord('q'):
             break
         '''
-        print(randframe)
         # begin = time.time()
-        EsimationFrame(deepcopy(img))
+        # EstimationFrame(deepcopy(img))
+        img = EstimationBody(img)
+        VideoWriter.write(img)
         # print(time.time()-begin)
     videofile.release()
+    VideoWriter.release()
+    print('consum time %.2f' % (time.time()-begin))
 
 
-def EsimationFrame(oriImg):
+def EstimationBody(oriImg):
+    candidate, subset = body_estimation(oriImg)
+
+    # only keep the announcer body
+    if len(subset) > 1:
+        leftshoulderX = np.zeros((len(subset),))
+        for person in range(len(subset)):
+            index = int(subset[person][5])
+            leftshoulderX[person] = candidate[index][0]
+        maxX = max(leftshoulderX)
+        for i in range(len(subset)):
+            if leftshoulderX[i] != maxX:
+                subset[i, :] = -1
+    # canvas = deepcopy(oriImg)
+    canvas = util.draw_bodypose(oriImg, candidate, subset)
+    # plt.imshow(canvas[:, :, [2, 1, 0]])
+    # plt.axis('off')
+    # plt.show()
+    return canvas
+
+    
+def EstimationFrame(oriImg):
     candidate, subset = body_estimation(oriImg)
     canvas = deepcopy(oriImg)
     canvas = util.draw_bodypose(canvas, candidate, subset)

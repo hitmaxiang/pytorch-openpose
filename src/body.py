@@ -62,8 +62,10 @@ class Body(object):
             paf = paf[:imageToTest_padded.shape[0] - pad[2], :imageToTest_padded.shape[1] - pad[3], :]
             paf = cv2.resize(paf, (oriImg.shape[1], oriImg.shape[0]), interpolation=cv2.INTER_CUBIC)
 
-            heatmap_avg += heatmap_avg + heatmap / len(multiplier)
-            paf_avg += + paf / len(multiplier)
+            # heatmap_avg += heatmap_avg + heatmap / len(multiplier)
+            # paf_avg += + paf / len(multiplier)
+            heatmap_avg += heatmap / len(multiplier)
+            paf_avg += paf / len(multiplier)
 
         all_peaks = []
         peak_counter = 0
@@ -116,7 +118,9 @@ class Body(object):
                 for i in range(nA):
                     for j in range(nB):
                         vec = np.subtract(candB[j][:2], candA[i][:2])
-                        norm = math.sqrt(vec[0] * vec[0] + vec[1] * vec[1])
+                        # norm = math.sqrt(vec[0] * vec[0] + vec[1] * vec[1])
+                        # add a small value to avoid divide error
+                        norm = math.sqrt(vec[0] * vec[0] + vec[1] * vec[1]) + 1e-10  
                         vec = np.divide(vec, norm)
 
                         startend = list(zip(np.linspace(candA[i][0], candB[j][0], num=mid_num),
