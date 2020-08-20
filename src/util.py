@@ -169,7 +169,8 @@ def handDetect(candidate, subset, oriImg):
             y = y3 + ratioWristElbow * (y3 - y2)
             distanceWristElbow = math.sqrt((x3 - x2) ** 2 + (y3 - y2) ** 2)
             distanceElbowShoulder = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-            width = 1.5 * max(distanceWristElbow, 0.9 * distanceElbowShoulder)
+            width = 1.0 * max(distanceWristElbow, 0.9 * distanceElbowShoulder)
+            
             # x-y refers to the center --> offset to topLeft point
             # handRectangle.x -= handRectangle.width / 2.f;
             # handRectangle.y -= handRectangle.height / 2.f;
@@ -188,8 +189,9 @@ def handDetect(candidate, subset, oriImg):
                 width2 = image_height - y
             width = min(width1, width2)
             # the max hand box value is 20 pixels
-            if width >= 20:
-                detect_result.append([int(x), int(y), int(width), is_left])
+            # if width >= 20:
+            #   detect_result.append([int(x), int(y), int(width), is_left])
+            detect_result.append([int(x), int(y), int(width), is_left])
 
     '''
     return value: [[x, y, w, True if left hand else False]].

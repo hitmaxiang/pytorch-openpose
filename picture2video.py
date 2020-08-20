@@ -10,7 +10,6 @@ def pictures2video(path, size, outputfile, fps=30):
     filenum = [int(snum.split('.')[0]) for snum in filelist]
     filenum.sort(reverse=False)  # increase sequence
     filelist = ['%d.jpg' % num for num in filenum]
-    filelist = filelist[:3000]
 
     # check the time continuity of the filelist
     TimeContinuityCheck(filelist)
@@ -72,6 +71,7 @@ def VideoFrameCheck(path, filelist, outputfile):
         # cv2.imshow('2', image)
         # cv2.imshow('1-2', abs(frameimg-image))
         # cv2.waitKey(0)
+    cv2.destroyAllWindows()
     videofile.release()
     print("the error is %f" % (np.mean(errors)/(size[0]*size[1])))
 
