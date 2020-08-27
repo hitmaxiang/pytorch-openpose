@@ -169,7 +169,7 @@ def handDetect(candidate, subset, oriImg):
             y = y3 + ratioWristElbow * (y3 - y2)
             distanceWristElbow = math.sqrt((x3 - x2) ** 2 + (y3 - y2) ** 2)
             distanceElbowShoulder = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-            width = 1.0 * max(distanceWristElbow, 0.9 * distanceElbowShoulder)
+            width = 1.5 * max(distanceWristElbow, 0.9 * distanceElbowShoulder)
             
             # x-y refers to the center --> offset to topLeft point
             # handRectangle.x -= handRectangle.width / 2.f;

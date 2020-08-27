@@ -28,7 +28,7 @@ class Hand(object):
         boxsize = 368
         stride = 8
         padValue = 128
-        thre = 0.05
+        thre = 0.03
         multiplier = [x * boxsize / oriImg.shape[0] for x in scale_search]
         heatmap_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 22))
         # paf_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 38))
@@ -63,7 +63,7 @@ class Hand(object):
             binary = np.ascontiguousarray(one_heatmap > thre, dtype=np.uint8)
             # 全部小于阈值
             if np.sum(binary) == 0:
-                all_peaks.append([0, 0])
+                all_peaks.append([0, 0, 0])
                 continue
             label_img, label_numbers = label(binary, return_num=True, connectivity=binary.ndim)
             max_index = np.argmax([np.sum(map_ori[label_img == i]) for i in range(1, label_numbers + 1)]) + 1
@@ -71,7 +71,7 @@ class Hand(object):
             map_ori[label_img == 0] = 0
 
             y, x = util.npmax(map_ori)
-            all_peaks.append([x, y])
+            all_peaks.append([x, y, np.max(map_ori)])
         return np.array(all_peaks)
 
 

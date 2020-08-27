@@ -15,6 +15,7 @@ body_estimation = Body('model/body_pose_model.pth')
 hand_estimation = Hand('model/hand_pose_model.pth')
 
 
+# demonstrate mode
 def EstimationVideo(inputfile):
 
     # open the video and read every frame data
@@ -32,8 +33,8 @@ def EstimationVideo(inputfile):
     begin = time.time()
     number = 0
     while True:
-        # randframe = np.random.randint(COUNT)
-        # videofile.set(cv2.CAP_PROP_POS_FRAMES, randframe)
+        randframe = np.random.randint(COUNT)
+        videofile.set(cv2.CAP_PROP_POS_FRAMES, randframe)
         # print(randframe)
         ret, frame = videofile.read()
         if ret is False:
@@ -50,9 +51,9 @@ def EstimationVideo(inputfile):
             break
         '''
         # begin = time.time()
-        # EstimationFrame(deepcopy(img))
-        img = EstimationBody(img)
-        VideoWriter.write(img)
+        EstimationFrame(deepcopy(img))
+        # img = EstimationBody(img)
+        # VideoWriter.write(img)
         # print(time.time()-begin)
     videofile.release()
     VideoWriter.release()
@@ -83,7 +84,7 @@ def EstimationBody(oriImg):
 def EstimationFrame(oriImg):
     candidate, subset = body_estimation(oriImg)
     canvas = deepcopy(oriImg)
-    canvas = util.draw_bodypose(canvas, candidate, subset)
+    # canvas = util.draw_bodypose(canvas, candidate, subset)
     # cv2.imshow('body', canvas)
     # detect hand
     hands_list = util.handDetect(candidate, subset, oriImg)
@@ -91,10 +92,10 @@ def EstimationFrame(oriImg):
     all_hand_peaks = []
     for x, y, w, is_left in hands_list:
 
-        if is_left:
-            cv2.rectangle(canvas, (x, y), (x+w, y+w), (0, 255, 0), 2, lineType=cv2.LINE_AA)
-        else:
-            cv2.rectangle(canvas, (x, y), (x+w, y+w), (255, 0, 0), 2, lineType=cv2.LINE_AA)
+        # if is_left:
+        #     cv2.rectangle(canvas, (x, y), (x+w, y+w), (0, 255, 0), 2, lineType=cv2.LINE_AA)
+        # else:
+        #     cv2.rectangle(canvas, (x, y), (x+w, y+w), (255, 0, 0), 2, lineType=cv2.LINE_AA)
         
         # cv2.putText(canvas, 'left' if is_left else 'right', (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
@@ -103,16 +104,17 @@ def EstimationFrame(oriImg):
             plt.imshow(oriImg[y:y+w, x:x+w, :][:, :, [2, 1, 0]])
             plt.show()
         '''
-        peaks = hand_estimation(oriImg[y:y+w, x:x+w, :])
-        peaks[:, 0] = np.where(peaks[:, 0] == 0, peaks[:, 0], peaks[:, 0]+x)
-        peaks[:, 1] = np.where(peaks[:, 1] == 0, peaks[:, 1], peaks[:, 1]+y)
-            
-        # else:
-        #     peaks = hand_estimation(cv2.flip(oriImg[y:y+w, x:x+w, :], 1))
-        #     peaks[:, 0] = np.where(peaks[:, 0]==0, peaks[:, 0], w-peaks[:, 0]-1+x)
-        #     peaks[:, 1] = np.where(peaks[:, 1]==0, peaks[:, 1], peaks[:, 1]+y)
+        print('the left hand', is_left)
+        if not is_left:
+            peaks = hand_estimation(oriImg[y:y+w, x:x+w, :])
+            peaks[:, 0] = np.where(peaks[:, 0] == 0, peaks[:, 0], peaks[:, 0]+x)
+            peaks[:, 1] = np.where(peaks[:, 1] == 0, peaks[:, 1], peaks[:, 1]+y)
+        else:
+            peaks = hand_estimation(cv2.flip(oriImg[y:y+w, x:x+w, :], 1))
+            peaks[:, 0] = np.where(peaks[:, 0] == 0, peaks[:, 0], w-peaks[:, 0]-1+x)
+            peaks[:, 1] = np.where(peaks[:, 1] == 0, peaks[:, 1], peaks[:, 1]+y)
         #     print(peaks)
-        all_hand_peaks.append(peaks)
+        all_hand_peaks.append(peaks[:, 0:2])
 
     canvas = util.draw_handpose(canvas, all_hand_peaks)
     
