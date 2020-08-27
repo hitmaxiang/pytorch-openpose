@@ -23,7 +23,8 @@ def EstimationVideo(inputfile):
     if not videofile.isOpened():
         raise Exception("the video file can not be open")
     
-    RECPOINT = ((400, 100), (640, 400))
+    # RECPOINT = ((400, 100), (640, 400))
+    RECPOINT = [(350, 100), (700, 400)]
     COUNT = videofile.get(cv2.CAP_PROP_FRAME_COUNT)
 
     size = (RECPOINT[1][0]-RECPOINT[0][0], RECPOINT[1][1]-RECPOINT[0][1])
@@ -83,6 +84,17 @@ def EstimationBody(oriImg):
     
 def EstimationFrame(oriImg):
     candidate, subset = body_estimation(oriImg)
+
+    if len(subset) > 1:
+        leftshoulderX = np.zeros((len(subset),))
+        for person in range(len(subset)):
+            index = int(subset[person][5])
+            leftshoulderX[person] = candidate[index][0]
+        maxX = max(leftshoulderX)
+        for i in range(len(subset)):
+            if leftshoulderX[i] != maxX:
+                subset[i, :] = -1
+
     canvas = deepcopy(oriImg)
     # canvas = util.draw_bodypose(canvas, candidate, subset)
     # cv2.imshow('body', canvas)
@@ -124,4 +136,12 @@ def EstimationFrame(oriImg):
 
 
 if __name__ == "__main__":
-    EstimationVideo('1.avi')
+    import os
+    destfolder = '/home/mario/sda/signdata/bbcpose'
+
+    Code = 1
+    if Code == 1:
+        filenames = os.listdir(destfolder)
+        for filename in filenames:
+            filepath = os.path.join(destfolder, filename)
+            EstimationVideo(filepath)

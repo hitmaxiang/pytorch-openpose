@@ -3,6 +3,7 @@ import os
 import numpy as np
 import multiprocessing
 from numba import jit
+from srcmx import utilmx
 
 
 def GetorderFilelist(path):
@@ -93,11 +94,11 @@ def VideoFrameCheck(srcfolder, destfolder, index, checktime=50):
                 if errors > 26:
                     print('%d-%d/%d--errors: %f' % (i, index, checktime, errors))
                     # print('too greate')
-                # cv2.imshow('img', frameimg)
-                # cv2.imshow('video', image)
+                cv2.imshow('img', frameimg)
+                cv2.imshow('video', image)
                 cv2.imshow('diff', diffimg)
-                # cv2.imshow('add', cv2.addWeighted(frameimg, 0.5, image, 0.5, 0))
-                key = cv2.waitKey(50)
+                cv2.imshow('add', cv2.addWeighted(frameimg, 0.5, image, 0.5, 0))
+                key = cv2.waitKey(0)
                 if key == 'q':
                     break
             video.release()
@@ -119,12 +120,62 @@ def Img2VideoBatch(srcfolder, destfolder, index):
     P.join()
 
 
+def UnzipImages(zipfolder, destfolder, index):
+    os.chdir(destfolder)
+    for i in index:
+        filename = '%s/%d.tgz' % (destfolder, i)
+        if os.path.isfile(filename):
+            os.system('tar -xvf %s' % filename)
+            print('the %d.tgz is unziped' % i)
+
+
+def CheckMotionRegion(videofolder):
+    videofiles = os.listdir(videofolder)
+    videofiles.sort()
+    RecBorder = [(350, 100), (700, 400)]
+    FaceCenter = (520-RecBorder[0][0], 160-RecBorder[0][1])
+    # RecBorder = ((400, 100), (640, 400))
+    for videoname in videofiles:
+        videopath = os.path.join(videofolder, videoname)
+        video = cv2.VideoCapture(videopath)
+        w, h = video.get(cv2.CAP_PROP_FRAME_WIDTH), video.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        Count = video.get(cv2.CAP_PROP_FRAME_COUNT)
+        if video.isOpened():
+            print('the shape of %s is (%d, %d)' % (videoname, w, h))
+            cv2.namedWindow(videoname.split('.')[0])
+        else:
+            print('the file %s can not be opened!' % videoname)
+            video.release()
+            continue
+
+        while True:
+            frameindex = np.random.randint(Count)
+            video.set(cv2.CAP_PROP_POS_FRAMES, frameindex)
+            ret, frame = video.read()
+            if ret is True:
+                
+                cv2.rectangle(frame, RecBorder[0], RecBorder[1], [0, 0, 255], 2)
+                rec = frame[RecBorder[0][1]:RecBorder[1][1], RecBorder[0][0]:RecBorder[1][0], :]
+                FaceCenter, frame = utilmx.FaceDetect(rec, FaceCenter)
+                cv2.imshow(videoname.split('.')[0], frame)
+                key = cv2.waitKey(0)
+                if key & 0xff == ord('q'):
+                    break
+            else:
+                break
+        video.release()
+        cv2.destroyAllWindows()
+
+
 if __name__ == '__main__':
     import sys
     # srcfolder = '/media/mario/maxiang/bbcpose_extbbcpose_data_1.0'
     srcfolder = '/usr/bbcpictures'
+    zipfolder = '/home/mario/sda/signdata/bbcpose_data_1.0'
     destfolder = '/home/mario/sda/signdata/bbcpose'
-    Code = 1
+    Code = 4
+
+    # batch conbine image sequences to video
     if Code == 1:
         # index = sys.argv[1:]
         index = [i for i in range(88, 89)]
@@ -135,6 +186,16 @@ if __name__ == '__main__':
             print(index)
         else:
             print('please input the index argument')
+    
+    # check the content of between images and video frames
     elif Code == 2:
-        index = [4, 5, 6]
-        VideoFrameCheck(srcfolder, destfolder, index, 200)
+        index = [i for i in range(1, 21)]
+        VideoFrameCheck(srcfolder, destfolder, index, 100)
+
+    # unzip the compressed images
+    elif Code == 3:
+        index = [i for i in range(1, 21)]
+        UnzipImages(zipfolder, srcfolder, index)
+    
+    elif Code == 4:
+        CheckMotionRegion(destfolder)
