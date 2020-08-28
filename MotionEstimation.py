@@ -1,8 +1,9 @@
 import cv2
-from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
 import time 
+
+from copy import deepcopy
 
 from src import model
 from src import util
@@ -13,6 +14,29 @@ from src.hand import Hand
 # load the trained model of pose and hand 
 body_estimation = Body('model/body_pose_model.pth')
 hand_estimation = Hand('model/hand_pose_model.pth')
+
+
+def ExtractMotionVideo(videopath, name):
+    
+    video = cv2.VideoCapture(videopath)
+    if not video.isOpened():
+        print('the file %s is not exist' % videopath)
+        return
+    count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    MotionMat = np.zeros((count, 60, 3))
+    Recpoint = [(350, 100), (700, 400)]
+
+    index = 0
+    while True:
+        ret, frame = video.read()
+        if ret is False:
+            break
+        print('%d/%d' % (index, int(count)), end='\r')
+        img = frame[Recpoint[0][1]:Recpoint[1][1], Recpoint[0][0]:Recpoint[1][0], :]
+        PoseMat = EstimationFrame(img, True)
+        MotionMat[index, :, :] = PoseMat
+        index += 1
+    np.save(name, MotionMat)
 
 
 # demonstrate mode
@@ -53,57 +77,41 @@ def EstimationVideo(inputfile):
         '''
         # begin = time.time()
         EstimationFrame(deepcopy(img))
-        # img = EstimationBody(img)
         # VideoWriter.write(img)
         # print(time.time()-begin)
     videofile.release()
     VideoWriter.release()
     print('consum time %.2f' % (time.time()-begin))
 
-
-def EstimationBody(oriImg):
-    candidate, subset = body_estimation(oriImg)
-
-    # only keep the announcer body
-    if len(subset) > 1:
-        leftshoulderX = np.zeros((len(subset),))
-        for person in range(len(subset)):
-            index = int(subset[person][5])
-            leftshoulderX[person] = candidate[index][0]
-        maxX = max(leftshoulderX)
-        for i in range(len(subset)):
-            if leftshoulderX[i] != maxX:
-                subset[i, :] = -1
-    # canvas = deepcopy(oriImg)
-    canvas = util.draw_bodypose(oriImg, candidate, subset)
-    # plt.imshow(canvas[:, :, [2, 1, 0]])
-    # plt.axis('off')
-    # plt.show()
-    return canvas
-
     
-def EstimationFrame(oriImg):
+def EstimationFrame(oriImg, display=False):
     candidate, subset = body_estimation(oriImg)
-
+    PoseMat = np.zeros((60, 3))
+    # find the most right person in the screen
+    maxindex = None
     if len(subset) > 1:
         leftshoulderX = np.zeros((len(subset),))
         for person in range(len(subset)):
             index = int(subset[person][5])
             leftshoulderX[person] = candidate[index][0]
-        maxX = max(leftshoulderX)
+        maxindex = np.argmax(leftshoulderX)
+        # clear the other person data
         for i in range(len(subset)):
-            if leftshoulderX[i] != maxX:
+            if i != maxindex:
                 subset[i, :] = -1
 
-    canvas = deepcopy(oriImg)
-    # canvas = util.draw_bodypose(canvas, candidate, subset)
-    # cv2.imshow('body', canvas)
+    # get the choose person's keypoint
+    if maxindex is not None:
+        for keyindex in range(18):
+            valueindex = int(subset[maxindex][keyindex])
+            if valueindex != -1:
+                PoseMat[keyindex, :] = candidate[valueindex][:3]
+
     # detect hand
     hands_list = util.handDetect(candidate, subset, oriImg)
 
     all_hand_peaks = []
     for x, y, w, is_left in hands_list:
-
         # if is_left:
         #     cv2.rectangle(canvas, (x, y), (x+w, y+w), (0, 255, 0), 2, lineType=cv2.LINE_AA)
         # else:
@@ -116,32 +124,43 @@ def EstimationFrame(oriImg):
             plt.imshow(oriImg[y:y+w, x:x+w, :][:, :, [2, 1, 0]])
             plt.show()
         '''
-        print('the left hand', is_left)
+        # print('the left hand', is_left)
         if not is_left:
             peaks = hand_estimation(oriImg[y:y+w, x:x+w, :])
             peaks[:, 0] = np.where(peaks[:, 0] == 0, peaks[:, 0], peaks[:, 0]+x)
             peaks[:, 1] = np.where(peaks[:, 1] == 0, peaks[:, 1], peaks[:, 1]+y)
+            PoseMat[39:39+21, :] = peaks
         else:
             peaks = hand_estimation(cv2.flip(oriImg[y:y+w, x:x+w, :], 1))
             peaks[:, 0] = np.where(peaks[:, 0] == 0, peaks[:, 0], w-peaks[:, 0]-1+x)
             peaks[:, 1] = np.where(peaks[:, 1] == 0, peaks[:, 1], peaks[:, 1]+y)
+            PoseMat[18:18+21, :] = peaks
         #     print(peaks)
         all_hand_peaks.append(peaks[:, 0:2])
-
-    canvas = util.draw_handpose(canvas, all_hand_peaks)
     
-    plt.imshow(canvas[:, :, [2, 1, 0]])
-    plt.axis('off')
-    plt.show()
+    # draw the body and hand 
+    if display is True:
+        canvas = deepcopy(oriImg)
+        canvas = util.draw_bodypose(canvas, candidate, subset)
+        canvas = util.draw_handpose(canvas, all_hand_peaks)
+        plt.imshow(canvas[:, :, [2, 1, 0]])
+        plt.axis('off')
+        plt.show()
+
+    return PoseMat
 
 
 if __name__ == "__main__":
     import os
     destfolder = '/home/mario/sda/signdata/bbcpose'
-
-    Code = 1
-    if Code == 1:
-        filenames = os.listdir(destfolder)
+    filenames = os.listdir(destfolder)
+    Code = 2
+    if Code == 1:  # random choose one file to estimation
+        filename = filenames[np.random.randint(len(filenames))]
+        filepath = os.path.join(destfolder, filename)
+        EstimationVideo(filepath)
+    elif Code == 2:
         for filename in filenames:
             filepath = os.path.join(destfolder, filename)
-            EstimationVideo(filepath)
+            ExtractMotionVideo(filepath, filename.split('.')[0])
+
