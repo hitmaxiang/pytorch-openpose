@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import time 
+import time
 
 from copy import deepcopy
 
@@ -16,14 +16,19 @@ body_estimation = Body('model/body_pose_model.pth')
 hand_estimation = Hand('model/hand_pose_model.pth')
 
 
-def ExtractMotionVideo(videopath, name):
+def ExtractMotionVideo(videopath, name, mode='body'):
     
     video = cv2.VideoCapture(videopath)
     if not video.isOpened():
         print('the file %s is not exist' % videopath)
         return
     count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-    MotionMat = np.zeros((count, 60, 3))
+    if mode == 'bodyhand':
+        MotionMat = np.zeros((count, 60, 3))
+        name = './data/%s-hb' % name
+    else:
+        MotionMat = np.zeros((count, 18, 3))
+        name = './data/%s-bd' % name
     Recpoint = [(350, 100), (700, 400)]
 
     index = 0
@@ -33,7 +38,10 @@ def ExtractMotionVideo(videopath, name):
             break
         print('%d/%d' % (index, int(count)), end='\r')
         img = frame[Recpoint[0][1]:Recpoint[1][1], Recpoint[0][0]:Recpoint[1][0], :]
-        PoseMat = EstimationFrame(img, True)
+        if mode == 'bodyhand':
+            PoseMat = EstimationFrame(img, False)
+        else:
+            PoseMat = BodyFrame(img)
         MotionMat[index, :, :] = PoseMat
         index += 1
     np.save(name, MotionMat)
@@ -83,7 +91,7 @@ def EstimationVideo(inputfile):
     VideoWriter.release()
     print('consum time %.2f' % (time.time()-begin))
 
-    
+
 def EstimationFrame(oriImg, display=False):
     candidate, subset = body_estimation(oriImg)
     PoseMat = np.zeros((60, 3))
@@ -150,9 +158,40 @@ def EstimationFrame(oriImg, display=False):
     return PoseMat
 
 
+def BodyFrame(oriImg, display=False):
+    candidate, subset = body_estimation(oriImg)
+    BodyMat = np.zeros((18, 3))
+    # find the most right person in the screen
+    maxindex = None
+    if len(subset) > 1:
+        leftshoulderX = np.zeros((len(subset),))
+        for person in range(len(subset)):
+            index = int(subset[person][5])
+            leftshoulderX[person] = candidate[index][0]
+        maxindex = np.argmax(leftshoulderX)
+
+    # get the choose person's keypoint
+    if maxindex is not None:
+        for keyindex in range(18):
+            valueindex = int(subset[maxindex][keyindex])
+            if valueindex != -1:
+                BodyMat[keyindex, :] = candidate[valueindex][:3]
+
+    # draw the body and hand 
+    if display is True:
+        canvas = deepcopy(oriImg)
+        canvas = util.draw_bodypose(canvas, candidate, subset)
+        plt.imshow(canvas[:, :, [2, 1, 0]])
+        plt.axis('off')
+        plt.show()
+
+    return BodyMat
+
+
 if __name__ == "__main__":
     import os
-    destfolder = '/home/mario/sda/signdata/bbcpose'
+    # destfolder = '/home/mario/sda/signdata/bbcpose'
+    destfolder = '/home/hit605/public/Upload/mx/bbcpose'
     filenames = os.listdir(destfolder)
     Code = 2
     if Code == 1:  # random choose one file to estimation
@@ -160,7 +199,13 @@ if __name__ == "__main__":
         filepath = os.path.join(destfolder, filename)
         EstimationVideo(filepath)
     elif Code == 2:
-        for filename in filenames:
+        # Pool = multiprocessing.Pool(processes=2)
+        filenames.sort()
+        for filename in filenames[80:]:
             filepath = os.path.join(destfolder, filename)
-            ExtractMotionVideo(filepath, filename.split('.')[0])
-
+            name = filename.split('.')[0]
+            print(name)
+            # Pool.apply_async(ExtractMotionVideo, args=(filepath, name))
+            ExtractMotionVideo(filepath, name, mode='body')
+        # Pool.close()
+        # Pool.join()
