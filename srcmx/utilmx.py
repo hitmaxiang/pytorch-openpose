@@ -7,8 +7,8 @@ def FaceDetect(frame, facecenter):
     profileface_cascade = cv2.CascadeClassifier()
 
     # load the cascades
-    face_cascade.load(cv2.samples.findFile('./modelmx/haarcascade_frontalface_alt.xml'))
-    profileface_cascade.load(cv2.samples.findFile('./modelmx/haarcascade_profileface.xml'))
+    face_cascade.load(cv2.samples.findFile('./model/haarcascade_frontalface_alt.xml'))
+    profileface_cascade.load(cv2.samples.findFile('./model/haarcascade_profileface.xml'))
 
     # convert the frame into grayhist
     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)

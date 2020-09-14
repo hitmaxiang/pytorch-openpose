@@ -12,8 +12,8 @@ from src.hand import Hand
 
 
 # load the trained model of pose and hand 
-body_estimation = Body('model/body_pose_model.pth')
-hand_estimation = Hand('model/hand_pose_model.pth')
+body_estimation = Body('../model/body_pose_model.pth')
+hand_estimation = Hand('../model/hand_pose_model.pth')
 
 
 def ExtractMotionVideo(videopath, name, mode='body'):
@@ -25,10 +25,10 @@ def ExtractMotionVideo(videopath, name, mode='body'):
     count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     if mode == 'bodyhand':
         MotionMat = np.zeros((count, 60, 3))
-        name = './data/%s-hb' % name
+        name = '../data/%s-hb' % name
     else:
         MotionMat = np.zeros((count, 18, 3))
-        name = './data/%s-bd' % name
+        name = '../data/%s-bd' % name
     Recpoint = [(350, 100), (700, 400)]
 
     npyname = '%s.npy' % name
@@ -250,7 +250,7 @@ def CheckNpydata(videopath, datapath):
                 candidate[i, :3] = pose[i, :]
             canvas = util.draw_bodypose(img, candidate, subset)
             cv2.imshow('img', canvas)
-            key = cv2.waitKey(30)
+            key = cv2.waitKey(10)
             if key & 0xff == ord('q'):
                 break
         else:
@@ -270,7 +270,7 @@ if __name__ == "__main__":
     # destfolder = '/home/hit605/public/Upload/mx/bbcpose'
     filenames = os.listdir(destfolder)
 
-    Code = 2
+    Code = 3
     if Code == 1:  # random choose one file to estimation
         filename = filenames[np.random.randint(len(filenames))]
         filepath = os.path.join(destfolder, filename)
@@ -285,11 +285,12 @@ if __name__ == "__main__":
             ExtractMotionVideo(filepath, name, mode='body')
     elif Code == 3:
         filenames.sort()
-        num = np.random.randint(len(filenames))
+        # num = np.random.randint(len(filenames))
+        num = 0
         for filename in filenames[num:]:
             filepath = os.path.join(destfolder, filename) 
             name = filename.split('.')[0]
-            datapath = './data/%s-bd.npy' % name
+            datapath = '../data/%s-bd.npy' % name
             if os.path.isfile(datapath):
                 print(name)
                 CheckNpydata(filepath, datapath)
