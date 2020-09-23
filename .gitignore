@@ -1,4 +1,5 @@
 hiddenlayer/
+.vscode/
 *.pth
 *.caffemodel
 .idea/

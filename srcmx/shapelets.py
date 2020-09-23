@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-22 20:45:10
 LastEditors: mario
-LastEditTime: 2020-09-23 23:29:52
+LastEditTime: 2020-09-24 01:44:03
 '''
 import tslearn
 import numpy as np
@@ -82,7 +82,7 @@ def GetShapelets(motiondict, subtitledic, word, display=False):
     plt.title("Evolution of cross-entropy loss during training")
     plt.xlabel("Epochs")
     plt.show()
-    
+
 
 def Test(code):
     import joblib
