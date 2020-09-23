@@ -3,7 +3,7 @@ import os
 import numpy as np
 import multiprocessing
 from numba import jit
-from srcmx import utilmx
+import utilmx
 
 
 def GetorderFilelist(path):
@@ -133,7 +133,7 @@ def CheckMotionRegion(videofolder):
     videofiles = os.listdir(videofolder)
     videofiles.sort()
     RecBorder = [(350, 100), (700, 400)]
-    FaceCenter = (520-RecBorder[0][0], 160-RecBorder[0][1])
+    # FaceCenter = (520-RecBorder[0][0], 160-RecBorder[0][1])
     # RecBorder = ((400, 100), (640, 400))
     for videoname in videofiles:
         videopath = os.path.join(videofolder, videoname)
@@ -153,10 +153,9 @@ def CheckMotionRegion(videofolder):
             video.set(cv2.CAP_PROP_POS_FRAMES, frameindex)
             ret, frame = video.read()
             if ret is True:
-                
                 cv2.rectangle(frame, RecBorder[0], RecBorder[1], [0, 0, 255], 2)
                 rec = frame[RecBorder[0][1]:RecBorder[1][1], RecBorder[0][0]:RecBorder[1][0], :]
-                FaceCenter, frame = utilmx.FaceDetect(rec, FaceCenter)
+                Faces, frame = utilmx.FaceDetect(rec)
                 cv2.imshow(videoname.split('.')[0], frame)
                 key = cv2.waitKey(0)
                 if key & 0xff == ord('q'):
@@ -173,7 +172,7 @@ if __name__ == '__main__':
     srcfolder = '/usr/bbcpictures'
     zipfolder = '/home/mario/sda/signdata/bbcpose_data_1.0'
     destfolder = '/home/mario/sda/signdata/bbcpose'
-    Code = 4
+    Code = 5
 
     # batch conbine image sequences to video
     if Code == 1:
@@ -199,3 +198,6 @@ if __name__ == '__main__':
     
     elif Code == 4:
         CheckMotionRegion(destfolder)
+    
+    elif Code == 5:
+        utilmx.Getvideoframes(destfolder)

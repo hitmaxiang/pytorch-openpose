@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-09-21 23:10:13
+LastEditTime: 2020-09-23 22:41:04
 '''
 import os
 import re
@@ -26,22 +26,30 @@ wordnet_lemmatizer = WordNetLemmatizer()
 
 
 class SubtitleDict():
-    def __init__(self, inputfile=None, midfile=False):
+    def __init__(self, dictfile, matfile=None, overwrite=False, midfile=False):
         '''
         description: initialize the subtitleDict class, when there is no
         args is giving, there is nothing to do
         param:
-            inputfile: the saved subtitleDict file or original .mat file, if 
-                       it is the .mat file, the dictfile is needed 
+            dictfile: the filepath of the dict, if it is not exist, the matfile is need to construct
+            matfile: the matlab format file (store the subtitles data)
+            overwrite: whether to overwrite the file
         return: None 
         author: mario
         '''
-        if inputfile is None:
-            pass
-        elif inputfile.endswith('mat'):
-            self.subtitledict = self.Construct_from_Mat(inputfile, midfile)
-        elif inputfile.endswith('pkl'):
-            self.subtitledict = joblib.load(inputfile)
+        if (overwrite is True) or (not os.path.exists(dictfile)):
+            if os.path.exists(matfile) and matfile.endswith('mat'):
+                self.subtitledict = self.Construct_from_Mat(matfile, midfile)
+                self.save(dictfile)
+            else:
+                print('the .mat file is needed')
+        elif os.path.exists(dictfile) and dictfile.endswith('pkl'):
+            self.subtitledict = joblib.load(dictfile)
+        else:
+            print('the .pkl dictfile path is needed')
+        
+        # get the maximum framcount of the videos
+        self.FrameCounts = self.GetFrameCounts()
         
     def Construct_from_Mat(self, inputfile, midfile=False):
         '''
@@ -74,14 +82,11 @@ class SubtitleDict():
 
         # whether to save the midfile
         if midfile:
-            # construct the oututfile name 
-            outfilename = os.path.basename(inputfile).split('.')[0]
-            outpath = os.path.join('./midfile', outfilename)
             # save the data of subtitledata in file
-            with open('%s.mid' % outpath, 'w') as f:
-                for video in subtitledata:
+            with open('../midfile/matfile.mid', 'w') as f:
+                for index, video in enumerate(subtitledata):
                     videoname = video[0]
-                    f.write('\n\n\n=====  %s  ===\n' % videoname)
+                    f.write('\n\n\n===== e%d.avi ----- %s  ===\n' % (index+1, videoname))
                     videodata = video[1:]
                     for record in videodata:
                         f.write('%d\t%d\t%s\n' % (record[0], record[1], record[2]))
@@ -132,7 +137,7 @@ class SubtitleDict():
         if midfile:
             # save the subtitledict word
             tempdictlist = sorted(SubtitleDict.items(), key=lambda x: len(x[1]))
-            with open('./midfile/subtitledic.mid', 'w', encoding='utf-8') as f:
+            with open('../midfile/dictfile.mid', 'w', encoding='utf-8') as f:
                 for word in tempdictlist:
                     f.write('%s\t%d\n' % (word[0], len(word[1])))
             
@@ -201,6 +206,11 @@ class SubtitleDict():
             rindex = np.random.randint(len(self.subtitledict[neg_key])) 
             neg_sample = self.subtitledict[neg_key][rindex]
             Valid = True
+
+            # when the endfram is large than the framecount of the video, then it will be ignore
+            videoindex, beginindex, endindex = neg_sample[:3]
+            if endindex > self.FrameCounts[videoindex] or (endindex-beginindex) < 40:
+                continue
             for pos_sample in samples:
                 if neg_sample[0] == pos_sample[0]:
                     if extend:
@@ -214,19 +224,28 @@ class SubtitleDict():
             if Valid is True:
                 neg_samples.append(neg_sample)
         return samples, neg_samples
-            
+    
+    def GetFrameCounts(self):
+        filepath = '../data/videoframeinfo.txt'
+        FrameCounts = np.zeros((92, ), dtype=np.int32)
+        pattern = r'^e(\d+).avi'
+        with open(filepath) as f:
+            lines = f.readlines()
+        for line in lines:
+            videoindex = int(re.findall(pattern, line)[0])
+            framecount = int(line.split()[2])
+            FrameCounts[videoindex-1] = framecount
+        return FrameCounts
+
 
 def Test(testcode):
-    subtilematpath = './data/bbc_subtitles.mat'
+    subtilematpath = '../data/bbc_subtitles.mat'
     # test the subtiledict class
     if testcode == 0:
         # subdict = SubtitleDict(subtilefile, dictfile, midfile=True)
-        subdictpath = './data/subtitledict.pkl'
-        if os.path.exists(subdictpath):
-            subdict = SubtitleDict(subdictpath)
-        else:
-            subdict = SubtitleDict(subtilematpath)
-            subdict.save(subdictpath)
+        subdictpath = '../data/subtitledict.pkl'
+        subdict = SubtitleDict(dictfile=subdictpath, matfile=subtilematpath,
+                               overwrite=True, midfile=True)
         subdict.ChooseSamples('snow')
 
 
