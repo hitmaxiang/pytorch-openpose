@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-09-23 22:41:04
+LastEditTime: 2020-09-24 21:29:32
 '''
 import os
 import re
@@ -199,6 +199,7 @@ class SubtitleDict():
         print('the word %s has %d samples!' % (word, len(samples)))
         neg_samples = []
         neg_keys = list(self.subtitledict.keys())
+        # np.random.seed(25)
         while len(neg_samples) < len(samples):
             neg_key = np.random.choice(neg_keys)
             if neg_key == word:

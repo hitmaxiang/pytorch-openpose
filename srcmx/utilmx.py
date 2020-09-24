@@ -4,12 +4,13 @@ Version: 2.0
 Autor: mario
 Date: 2020-08-27 20:41:43
 LastEditors: mario
-LastEditTime: 2020-09-24 02:05:55
+LastEditTime: 2020-09-24 16:31:56
 '''
 import os
 import re
 import cv2
 import numpy as np
+from tslearn import metrics
 from scipy.io import loadmat
 from numba import jit
 from sklearn.preprocessing import scale
@@ -93,25 +94,6 @@ def Getvideoframes(dirname):
             f.write('e%d.avi\t%6d\t%6d\t%6d\n' % (i, startdict[i], countdict[i], maxframdict[i]))
 
 
-def Shapelets_Rangelength(pos_samples, neg_samples, lengthrange):
-    '''
-    description: 
-    param {type} 
-    return {type} 
-    author: mario
-    ''' 
-    low, high = lengthrange
-    for length in range(low, high+1):
-        for index, pos_sample in enumerate(pos_samples):
-            for q_index in range(pos_samples.shape[0]-length+1):
-                query = pos_sample[q_index:q_index+length]
-
-
-def ShapeletsScore(query, pos_sample, neg_samples):
-    norm_query = scale(query)
-
-
-
 def LB_keogh(arraydata, width=5, mode=0):
     '''
     description: calculate the LB_keogh of the arraydata
@@ -122,6 +104,8 @@ def LB_keogh(arraydata, width=5, mode=0):
     Upper = np.zeros_like(arraydata)
     Lower = np.zeros_like(arraydata)
 
+    env_low, env_up = metrics.lb_envelope()
+
     # calculate the LB_keogh from every feature axis
     if mode = 0:
-        for 
+        pass

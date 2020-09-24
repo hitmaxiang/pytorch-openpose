@@ -276,7 +276,8 @@ def CombineMotiondata(datafolder, mode):
             motiondata = np.load(filepath)
             Postion = motiondata[:, :, :2].astype(np.int16)
             Score = motiondata[:, :, -1]
-            MotionDataDicVideos[i] = (Postion, Score)
+            key = '%dvideo' % i
+            MotionDataDicVideos[key] = (Postion, Score)
     joblib.dump(MotionDataDicVideos, '../data/motionsdic.pkl')
 
 
@@ -290,7 +291,8 @@ def Verifypkldata(videodir, pklfilepath):
             print('the file %s is not exist' % videopath)
             continue
         video = cv2.VideoCapture(videopath)
-        PoseMat = motiondtadic[videoindex][0]  
+        videokey = '%dvideo' % videoindex
+        PoseMat = motiondtadic[videokey][0]  
         # determine the mode using the shape of data
         mode = 'bodyhand'
         if PoseMat.shape[1] == 18:
@@ -387,7 +389,9 @@ if __name__ == "__main__":
                 CheckNpydata(filepath, datapath)
     # combine the motion data files to one file
     elif Code == 4:
+        npydatafolder = '/home/mario/sda/signdata/bbcpose_npy'
         print('testcode4')
+        # CombineMotiondata(npydatafolder, 'body')
         if not os.path.exists('../data/motionsdic.pkl'):
-            CombineMotiondata('../data', 'body')
+            CombineMotiondata(npydatafolder, 'body')
         Verifypkldata(destfolder, '../data/motionsdic.pkl')
