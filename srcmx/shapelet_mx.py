@@ -4,13 +4,14 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:25:13
 LastEditors: mario
-LastEditTime: 2020-09-25 23:04:39
+LastEditTime: 2020-09-26 01:29:21
 '''
 import utilmx
 import numpy as np
 import time
 from sklearn.preprocessing import scale
 from tslearn import metrics
+from numba import jit
 
 
 def Shapelets_Rangelength(pos_samples, neg_samples, lengthrange):
@@ -21,26 +22,48 @@ def Shapelets_Rangelength(pos_samples, neg_samples, lengthrange):
     author: mario
     ''' 
     low_len, high_len = lengthrange
-    for length in range(low, high+1):
+    labels = [1] * (len(pos_samples)-1) + [0] * len(neg_samples)
+    for length in range(low_len, high_len+1):
+        maxrecord = [0, 0, 0, 0]  # length, index, qindex, score
         for index, pos_sample in enumerate(pos_samples):
-            for q_index in range(pos_samples.shape[0]-length+1):
+            begintime = time.time()
+            testsamples = pos_samples[:index] + pos_samples[index+1:] + neg_samples
+            for q_index in range(len(pos_sample)-length+1):
                 query = pos_sample[q_index:q_index+length]
-                samples = pos_samples[:q_index] + pos_samples[q_index+1:] + neg_samples
-                labels = [1] * (len(pos_samples)-1) + [0] * len(neg_samples)
+                score = ShapeletsScore(query, testsamples, labels)
+                if score > maxrecord[-1]:
+                    maxrecord = [length, index, q_index, score]
+            print(maxrecord, 'with time %f' % (time.time()-begintime))
 
 
-
-
+# @jit
 def ShapeletsScore(query, samples, labels):
-    Scores = np.zeros((len(samples),))
-    Locations = np.zeros(len(samples), len(query))
+    Distances = np.zeros((len(samples),))
+    Locations = []  # np.zeros((len(samples), len(query), 2))
     for index, sample in enumerate(samples):
         locas, score = metrics.dtw_subsequence_path(query, sample)
-        Scores[index] = score
-        Locations[index] = 
+        Distances[index] = score
+        Locations.append(locas)
 
-
-
+    # caculate the 
+    dis_sort_index = np.argsort(Distances)
+    correct = len(labels) - sum(labels)
+    Bound_correct = len(labels)
+    maxcorrect = correct
+    for idnum in dis_sort_index:
+        if labels[idnum] == 1:  # 分对的
+            correct += 1
+            if correct > maxcorrect:
+                maxcorrect = correct
+        else:
+            correct -= 1
+            Bound_correct -= 1
+        if correct == Bound_correct:
+            break
+        # print('%d-%d-%f' % (Bound_correct, correct, correct/len(labels)))
+    return(maxcorrect/len(labels))
+    
+        
 def Distance_shapelet_timeserie(norm_query, sort_index, Timeseries, mode=0):
     m = len(norm_query)
     Lower_env, upper_env = metrics.lb_envelope(norm_query, radius=2)
@@ -129,7 +152,12 @@ def Test(testcode):
         Distance_shapelet_timeserie(norm_query, None, samples, mode=0)
         Distance_shapelet_timeserie(norm_query, None, samples, mode=1)
         Distance_shapelet_timeserie(norm_query, None, samples, mode=2)
+    elif testcode == 1:
+        pos_samples = [np.random.randint(10, size=(np.random.randint(800, 1000), 4)) for i in range(100)]
+        neg_samples = [np.random.randint(10, size=(np.random.randint(800, 1000), 4)) for i in range(100)]
+        Shapelets_Rangelength(pos_samples, neg_samples, (10, 20))
+
 
 
 if __name__ == "__main__":
-    Test(0)
+    Test(1)
