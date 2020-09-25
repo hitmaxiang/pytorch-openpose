@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-08-27 20:41:43
 LastEditors: mario
-LastEditTime: 2020-09-24 16:31:56
+LastEditTime: 2020-09-25 14:32:21
 '''
 import os
 import re
@@ -94,18 +94,44 @@ def Getvideoframes(dirname):
             f.write('e%d.avi\t%6d\t%6d\t%6d\n' % (i, startdict[i], countdict[i], maxframdict[i]))
 
 
-def LB_keogh(arraydata, width=5, mode=0):
+def ReadRecord(recordfile):
     '''
-    description: calculate the LB_keogh of the arraydata
+    description: extract the data (test data) from the record data
     param {type} 
     return {type} 
     author: mario
     '''
-    Upper = np.zeros_like(arraydata)
-    Lower = np.zeros_like(arraydata)
+    RecordsDict = {}
+    with open(recordfile, 'r') as f:
+        lines = f.readlines()
+    params_pattern = r'lenth:\s*(\d+),\s*iters:\s*(\d+),\s*feature:\s*(\d+)'
+    score_pattern = r'score:\s*(\d*.\d+)$'
+    locs_pattern = r'Locs:(.*)$'
+    for line in lines:
+        params = re.findall(params_pattern, line)
+        if len(params) != 0:
+            key = '-'.join(params[0])
+            if key not in RecordsDict.keys():
+                RecordsDict[key] = {'num': 1}
+                RecordsDict[key]['score'] = []
+                RecordsDict[key]['location'] = []
+            else:
+                RecordsDict[key]['num'] += 1
+            continue
 
-    env_low, env_up = metrics.lb_envelope()
+        score = re.findall(score_pattern, line)
+        if len(score) != 0:
+            RecordsDict[key]['score'].append(float(score[0]))
+            continue
+        
+        locs = re.findall(locs_pattern, line)
+        if len(locs) != 0:
+            locs = locs[0].split()
+            locs = [int(d) for d in locs]
+            RecordsDict[key]['location'].append(locs)
+        
+    return RecordsDict
 
-    # calculate the LB_keogh from every feature axis
-    if mode = 0:
-        pass
+
+if __name__ == "__main__":
+    ReadRecord('../data/record.txt')

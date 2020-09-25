@@ -4,9 +4,10 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-22 20:45:10
 LastEditors: mario
-LastEditTime: 2020-09-24 22:06:51
+LastEditTime: 2020-09-25 14:08:52
 '''
 import tslearn
+import utilmx
 import multiprocessing
 import numpy as np
 import tensorflow as tf
@@ -100,18 +101,28 @@ def Test(code):
     motionsdictpath = '../data/motionsdic.pkl'
     code = 0
     if code == 0:
-        P = multiprocessing.Pool(processes=8)
+        # P = multiprocessing.Pool(processes=4)
         subtitledict = SubtitleDict(subtitledictpath)
         motionsdict = joblib.load(motionsdictpath)
-        ITERS = [100, 200, 300, 400, 500, 600, 700, 800, 900]
+        recorddict = utilmx.ReadRecord('../data/record-1.txt')
+
+        ITERS = [300, 400, 500, 600, 700, 800, 900]
         S_LENGTH = [i for i in range(4, 20)]
         for lens in S_LENGTH:
             for iters in ITERS:
                 for feature in [0, 1]:
-                    for i in range(50):
-                        P.apply_async(GetShapelets, args=(motionsdict, subtitledict, 'snow', iters, lens, feature))
-        P.close()
-        P.join()
+                    key = '%d-%d-%d' % (lens, iters, feature)
+                    print(key)
+                    deficit_repeat = 50
+                    if key in recorddict.keys():
+                        deficit_repeat -= recorddict[key]['num']
+                    if deficit_repeat > 0: 
+                        for i in range(deficit_repeat):
+                            # P.apply_async(GetShapelets, args=(motionsdict, subtitledict, 'snow', iters, lens, feature))
+                            GetShapelets(motionsdict, subtitledict, 'snow', iters, lens, feature)
+        # P.close()
+        # P.join()
+
 
 if __name__ == "__main__":
     Test(0)
