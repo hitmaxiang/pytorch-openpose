@@ -4,9 +4,10 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-22 20:45:10
 LastEditors: mario
-LastEditTime: 2020-09-25 14:08:52
+LastEditTime: 2020-10-10 22:35:05
 '''
 import tslearn
+import time
 import utilmx
 import multiprocessing
 import numpy as np
@@ -22,13 +23,12 @@ from tslearn.shapelets import LearningShapelets, grabocka_params_to_shapelet_siz
 from tslearn.preprocessing import TimeSeriesScalerMinMax
 
 
-def GetShapelets(motiondict, subtitledic, word, iters, s_length, featuremode, display=False):
-    pos_indexes, neg_indexes = subtitledic.ChooseSamples(word)
+def GetShapelets(motiondict, pos_indexes, neg_indexes, word, iters, s_length, featuremode, display=False):
+    # pos_indexes, neg_indexes = subtitledic.ChooseSamples(word)
     samples = []
     labels = [1] * len(pos_indexes) + [0] * len(neg_indexes)
     clip_indexes = pos_indexes + neg_indexes
     Lengths = []
-    
     for record in clip_indexes:
         videoindex, beginindex, endindex = record[:3]
         # the begin index of the dict is 1
@@ -51,7 +51,6 @@ def GetShapelets(motiondict, subtitledic, word, iters, s_length, featuremode, di
         # select the defined motion joint
         clip_data = PD.MotionJointSelect(clip_data, datamode='body', featuremode=featuremode)
         samples.append(clip_data)
-    
     # the data should be padding to the maxlength
     maxlen = max(Lengths)
     for index, clip_data in enumerate(samples):
@@ -62,7 +61,6 @@ def GetShapelets(motiondict, subtitledic, word, iters, s_length, featuremode, di
     # before the shapelest learn, normalize the sameples should be done
     norm_samples = TimeSeriesScalerMinMax().fit_transform(samples)
     norm_samples = np.nan_to_num(norm_samples)
-
     n_ts, ts_sz = norm_samples.shape[:2]
     shapelet_sizes = {s_length: 1}
     # shapelet_sizes = grabocka_params_to_shapelet_size_dict(n_ts=n_ts, ts_sz=ts_sz, n_classes=2, l=0.025, r=1)
@@ -73,10 +71,15 @@ def GetShapelets(motiondict, subtitledic, word, iters, s_length, featuremode, di
                                 max_iter=iters,
                                 random_state=42,
                                 verbose=0)
+    
+    begin_time = time.time()
     shp_clf.fit(norm_samples, labels)
+    print('the model train consume %f seconds' % (time.time()-begin_time))
+    
     # shp_clf.to_pickle('../data/%s.pkl' % word)
     score = shp_clf.score(norm_samples, labels)
     Locs = shp_clf.locate(norm_samples[: len(pos_indexes)])
+    begin_time = time.time()
     with open('../data/record.txt', 'a+') as f:
         f.write('\nthe test of word: %s, with lenth: %d, iters: %d, feature: %d\n' %
                 (word, s_length, iters, featuremode))
@@ -85,6 +88,7 @@ def GetShapelets(motiondict, subtitledic, word, iters, s_length, featuremode, di
         for loc in Locs:
             f.write('\t%d' % loc[0])
         f.write('\n\n')
+    print('the file write consume %f seconds' % (time.time()-begin_time))
     print('the score is %f' % shp_clf.score(norm_samples, labels))
 
     # for key, lossdata in shp_clf.history_.items():
@@ -106,6 +110,8 @@ def Test(code):
         motionsdict = joblib.load(motionsdictpath)
         recorddict = utilmx.ReadRecord('../data/record-1.txt')
 
+        Batch_size = 10 
+        word = 'snow'
         ITERS = [300, 400, 500, 600, 700, 800, 900]
         S_LENGTH = [i for i in range(4, 20)]
         for lens in S_LENGTH:
@@ -118,8 +124,18 @@ def Test(code):
                         deficit_repeat -= recorddict[key]['num']
                     if deficit_repeat > 0: 
                         for i in range(deficit_repeat):
+                            pos_indexes, neg_indexes = subtitledict.ChooseSamples(word)
                             # P.apply_async(GetShapelets, args=(motionsdict, subtitledict, 'snow', iters, lens, feature))
-                            GetShapelets(motionsdict, subtitledict, 'snow', iters, lens, feature)
+                            GetShapelets(motionsdict, pos_indexes, neg_indexes, word, iters, lens, feature)
+                            Batch_size -= 1
+                            if Batch_size <= 0:
+                                break
+                    if Batch_size <= 0:
+                        break
+                if Batch_size <= 0:
+                    break
+            if Batch_size <= 0:
+                break
         # P.close()
         # P.join()
 

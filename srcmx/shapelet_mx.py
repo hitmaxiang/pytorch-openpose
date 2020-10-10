@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:25:13
 LastEditors: mario
-LastEditTime: 2020-09-26 01:29:21
+LastEditTime: 2020-09-26 15:35:30
 '''
 import utilmx
 import numpy as np
@@ -156,8 +156,6 @@ def Test(testcode):
         pos_samples = [np.random.randint(10, size=(np.random.randint(800, 1000), 4)) for i in range(100)]
         neg_samples = [np.random.randint(10, size=(np.random.randint(800, 1000), 4)) for i in range(100)]
         Shapelets_Rangelength(pos_samples, neg_samples, (10, 20))
-
-
 
 if __name__ == "__main__":
     Test(1)

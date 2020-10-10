@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-09-24 21:29:32
+LastEditTime: 2020-09-26 17:43:44
 '''
 import os
 import re
@@ -195,8 +195,8 @@ class SubtitleDict():
         joblib.dump(self.subtitledict, outpath)
 
     def ChooseSamples(self, word, extend=True):
+        begin_time = time.time()
         samples = self.subtitledict[word]
-        print('the word %s has %d samples!' % (word, len(samples)))
         neg_samples = []
         neg_keys = list(self.subtitledict.keys())
         # np.random.seed(25)
@@ -224,6 +224,7 @@ class SubtitleDict():
                             break
             if Valid is True:
                 neg_samples.append(neg_sample)
+        print('the %s has %d samples, and consume %f seconds!' % (word, len(samples), time.time()-begin_time))
         return samples, neg_samples
     
     def GetFrameCounts(self):
