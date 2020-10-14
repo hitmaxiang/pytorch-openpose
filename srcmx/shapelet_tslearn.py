@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-22 20:45:10
 LastEditors: mario
-LastEditTime: 2020-10-13 13:14:27
+LastEditTime: 2020-10-14 22:04:15
 '''
 import tslearn
 import time
@@ -114,6 +114,7 @@ def Test(code):
         word = 'snow'
         ITERS = [300, 400, 500, 600, 700, 800, 900]
         S_LENGTH = [i for i in range(4, 20)]
+        S_LENGTH.reverse()
         for lens in S_LENGTH:
             for iters in ITERS:
                 for feature in [0, 1]:

@@ -4,14 +4,16 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:25:13
 LastEditors: mario
-LastEditTime: 2020-10-13 13:09:07
+LastEditTime: 2020-10-14 22:49:20
 '''
+import time
 import utilmx
 import numpy as np
-import time
+import PreprocessingData as PD
 from sklearn.preprocessing import scale
 from tslearn import metrics
 from numba import jit
+from SubtitleDict import SubtitleDict
 
 
 def Shapelets_Rangelength(pos_samples, neg_samples, lengthrange):
@@ -25,15 +27,16 @@ def Shapelets_Rangelength(pos_samples, neg_samples, lengthrange):
     labels = [1] * (len(pos_samples)-1) + [0] * len(neg_samples)
     for length in range(low_len, high_len+1):
         maxrecord = [0, 0, 0, 0]  # length, index, qindex, score
+        begintime = time.time()
         for index, pos_sample in enumerate(pos_samples):
-            begintime = time.time()
+            
             testsamples = pos_samples[:index] + pos_samples[index+1:] + neg_samples
             for q_index in range(len(pos_sample)-length+1):
                 query = pos_sample[q_index:q_index+length]
                 score = ShapeletsScore(query, testsamples, labels)
                 if score > maxrecord[-1]:
                     maxrecord = [length, index, q_index, score]
-            print(maxrecord, 'with time %f' % (time.time()-begintime))
+        print(maxrecord, 'with time %f' % (time.time()-begintime))
 
 
 # @jit
@@ -156,7 +159,40 @@ def Test(testcode):
         pos_samples = [np.random.randint(10, size=(np.random.randint(800, 1000), 4)) for i in range(100)]
         neg_samples = [np.random.randint(10, size=(np.random.randint(800, 1000), 4)) for i in range(100)]
         Shapelets_Rangelength(pos_samples, neg_samples, (10, 20))
+    elif testcode == 2:
+        import joblib
+        subtitledictpath = '../data/subtitledict.pkl'
+        motionsdictpath = '../data/motionsdic.pkl'
+
+        subtitledict = SubtitleDict(subtitledictpath)
+        motiondict = joblib.load(motionsdictpath)
+        # recorddict = utilmx.ReadRecord('../data/record_mx.txt')
+        word = 'snow'
+        pos_indexes, neg_indexes = subtitledict.ChooseSamples(word)
+
+        Lengths = []
+        samples = []
+        clip_indexes = pos_indexes + neg_indexes
+        for record in clip_indexes:
+            videoindex, beginindex, endindex = record[:3]
+            # the begin index of the dict is 1
+            videokey = '%dvideo' % (videoindex+1)
+            if videokey not in motiondict.keys():
+                continue
+            clip_data = motiondict[videokey][0][beginindex:endindex]
+
+            # judge whether the clip length is correct
+            Lengths.append(clip_data.shape[0])
+            # select the defined motion joint
+            clip_data = PD.MotionJointSelect(clip_data, datamode='body', featuremode=0)
+            clip_data = np.reshape(clip_data, (clip_data.shape[0], -1))
+            samples.append(clip_data)
+
+        pos_samples = samples[:len(pos_indexes)]
+        neg_samples = samples[len(pos_indexes):]
+        minLen = min(Lengths)
+        Shapelets_Rangelength(pos_samples, neg_samples, (4, minLen))
 
 
 if __name__ == "__main__":
-    Test(1)
+    Test(2)
