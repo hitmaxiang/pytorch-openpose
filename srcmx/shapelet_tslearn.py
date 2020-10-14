@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-22 20:45:10
 LastEditors: mario
-LastEditTime: 2020-10-10 22:35:05
+LastEditTime: 2020-10-13 13:14:27
 '''
 import tslearn
 import time
@@ -72,14 +72,14 @@ def GetShapelets(motiondict, pos_indexes, neg_indexes, word, iters, s_length, fe
                                 random_state=42,
                                 verbose=0)
     
-    begin_time = time.time()
+    # begin_time = time.time()
     shp_clf.fit(norm_samples, labels)
-    print('the model train consume %f seconds' % (time.time()-begin_time))
+    # print('the model train consume %f seconds' % (time.time()-begin_time))
     
     # shp_clf.to_pickle('../data/%s.pkl' % word)
     score = shp_clf.score(norm_samples, labels)
     Locs = shp_clf.locate(norm_samples[: len(pos_indexes)])
-    begin_time = time.time()
+    # begin_time = time.time()
     with open('../data/record.txt', 'a+') as f:
         f.write('\nthe test of word: %s, with lenth: %d, iters: %d, feature: %d\n' %
                 (word, s_length, iters, featuremode))
@@ -88,7 +88,7 @@ def GetShapelets(motiondict, pos_indexes, neg_indexes, word, iters, s_length, fe
         for loc in Locs:
             f.write('\t%d' % loc[0])
         f.write('\n\n')
-    print('the file write consume %f seconds' % (time.time()-begin_time))
+    # print('the file write consume %f seconds' % (time.time()-begin_time))
     print('the score is %f' % shp_clf.score(norm_samples, labels))
 
     # for key, lossdata in shp_clf.history_.items():
@@ -108,9 +108,9 @@ def Test(code):
         # P = multiprocessing.Pool(processes=4)
         subtitledict = SubtitleDict(subtitledictpath)
         motionsdict = joblib.load(motionsdictpath)
-        recorddict = utilmx.ReadRecord('../data/record-1.txt')
+        recorddict = utilmx.ReadRecord('../data/record.txt')
 
-        Batch_size = 10 
+        Batch_size = 50 
         word = 'snow'
         ITERS = [300, 400, 500, 600, 700, 800, 900]
         S_LENGTH = [i for i in range(4, 20)]
@@ -128,6 +128,7 @@ def Test(code):
                             # P.apply_async(GetShapelets, args=(motionsdict, subtitledict, 'snow', iters, lens, feature))
                             GetShapelets(motionsdict, pos_indexes, neg_indexes, word, iters, lens, feature)
                             Batch_size -= 1
+                            print('the iterations left: %d' % Batch_size)
                             if Batch_size <= 0:
                                 break
                     if Batch_size <= 0:
