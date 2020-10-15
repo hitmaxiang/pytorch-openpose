@@ -4,10 +4,11 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:34:31
 LastEditors: mario
-LastEditTime: 2020-09-25 15:05:37
+LastEditTime: 2020-10-15 20:24:41
 '''
 import numpy as np
 from numba import jit
+from sklearn.preprocessing import scale
 
 
 def MotionJointSelect(motiondata, datamode, featuremode):
@@ -57,3 +58,20 @@ def Strip_motion_times_data(array):
     
     return array[begin_index:end_index]
 
+
+def NormlizeData(samples, mode=0):
+    '''
+    description: 对样本数据进行归一化处理
+    param: 
+        samples: 时间序列样本, 因为每个时间序列样本的长度并不固定, 所以是以 list
+            的形式给出的, 每个时间序列的格式为(n_times, n_dims)
+        mode: 不同形式的归一化方式
+    return: 归一化之后的时间序列样本
+    author: mario
+    '''
+    # 对每个时间序列样本进行 zero_normlized 格式化
+    if mode == 0:
+        for s_id in range(len(samples)):
+            samples[s_id] = scale(samples[s_id], axis=0)
+
+    return samples

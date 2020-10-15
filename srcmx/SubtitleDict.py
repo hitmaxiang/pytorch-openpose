@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-09-26 17:43:44
+LastEditTime: 2020-10-15 16:06:05
 '''
 import os
 import re
@@ -240,8 +240,57 @@ class SubtitleDict():
         return FrameCounts
 
 
+class AnnotationDict:
+    def __init__(self, datapath):
+        if os.path.isfile(datapath):
+            if datapath.endswith('.mat'):
+                self.annotation_dict = self.extract_annotationdict(datapath)
+            elif datapath.endswith('.pkl'):
+                self.annotation_dict = joblib.load(datapath)
+    
+    def extract_annotationdict(self, matpath):
+        annotationdict = {}
+        mat = loadmat(matpath)
+        datas = mat['bbc_sign_annotation'][0]
+        for index, data in enumerate(datas):
+            if len(data[1][0]) == 0:
+                continue
+            else:
+                for record in data[1][0]:
+                    key = record[0][0]
+                    begin_index = record[1][0][0]
+                    end_index = record[2][0][0]
+                    if key in annotationdict.keys():
+                        annotationdict[key].append([index, begin_index, end_index])
+                    else:
+                        annotationdict[key] = [[index, begin_index, end_index]]
+        joblib.dump(annotationdict, '../data/annotationdict.pkl')
+        return annotationdict
+    
+    def CalculateAccuracy_with_locs(self, word, locs, thres=0.5):
+        if word not in self.annotation_dict.keys():
+            print('the word in not in the annotation dictionary')
+        Records = self.annotation_dict[word]
+
+        rangedis = [float('inf')] * len(Records)
+        for index, record in enumerate(Records):
+            [q_index, q_begin, q_end] = record
+            for r_index, r_begin, r_end in locs:
+                if q_index == r_index:
+                    if r_begin <= q_begin <= r_end or r_begin <= q_end <= r_end:
+                        rangedis[index] = 0
+                    elif q_begin <= r_begin <= q_end or q_begin <= r_end <= q_end:
+                        rangedis[index] = 0
+                    else:
+                        dis = min(abs([q_begin-r_begin, q_begin-r_end, q_end-r_begin, q_end-r_end]))
+                        if dis < rangedis[index]:
+                            rangedis[index] = dis
+        return rangedis
+        
+
 def Test(testcode):
     subtilematpath = '../data/bbc_subtitles.mat'
+    annotationpath = '../data/bbc_sign_annotation.mat'
     # test the subtiledict class
     if testcode == 0:
         # subdict = SubtitleDict(subtilefile, dictfile, midfile=True)
@@ -249,7 +298,10 @@ def Test(testcode):
         subdict = SubtitleDict(dictfile=subdictpath, matfile=subtilematpath,
                                overwrite=True, midfile=True)
         subdict.ChooseSamples('snow')
+    elif testcode == 1:
+        anotationdict = AnnotationDict(annotationpath)
+
 
 
 if __name__ == "__main__":
-    Test(0)
+    Test(1)
