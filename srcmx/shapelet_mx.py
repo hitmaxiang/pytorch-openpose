@@ -4,12 +4,14 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:25:13
 LastEditors: mario
-LastEditTime: 2020-10-15 22:13:48
+LastEditTime: 2020-10-17 23:38:12
 '''
 import time
 import utilmx
 import joblib
+import tslearn
 import numpy as np
+import tensorflow as tf
 import PreprocessingData as PD
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import scale
@@ -51,10 +53,11 @@ class Shapelets_mx():
             
         return samples, clip_indexes[:len(pos_indexes), :2]
     
-    def train(self, word):
+    def train(self, word, method):
         self.word = word
         samples, pos_indexes = self.Getsamples(word)
-        self.FindShaplets_dtw_methods(samples, pos_indexes, 10)
+        for m in range(4, 20):
+            self.FindShaplets_dtw_methods(samples, pos_indexes, m)
     
     def FindShaplets_dtw_methods(self, samples, pos_indexes, m_len):
         # 对样本集合进行归一化处理
@@ -83,9 +86,48 @@ class Shapelets_mx():
                     best_score = tempscore
                     best_query = query
                     best_locs = temp_record
-        tempscore, thre = self.Bipartition_score(best_locs[:, 0], len(pos_indexes), display=True)
+        # tempscore, thre = self.Bipartition_score(best_locs[:, 0], len(pos_indexes), display=True)
+        print('\n\n the length with % d and score is %f' % (m_len, tempscore))
+        accuracy = self.RetriveAccuracy(pos_indexes, best_locs[:len(pos_indexes), 1:])
         print()
     
+    def FindShaplets_tslearn_class(self, samples, pos_indexes, m_len, iters=300):
+        '''
+        description: using the shapelets class from tslearn to learn the shapelet
+        param:
+            samples: the list of samples, each sample with the shape with (n_times, n_dim)
+        return: the shapelet
+        author: mario
+        '''
+        # define the labels of the samples
+        labels = np.zeros((len(samples),))
+        labels[:len(pos_indexes)] = 1
+
+        # prepare the samples to satisfy the format demand
+        samples = tslearn.utils.to_time_series(samples)
+        norm_samples = tslearn.preprocessing.TimeSeriesScalerMinMax().fit_transform(samples)
+        norm_samples = np.nan_to_num(norm_samples)
+
+        # train and fit the shapelts_from_tslearn model
+        shapelet_sizes = {m_len: 1}
+        shp_clf = tslearn.shapelets.LearningShapelets(
+
+            n_shapelets_per_size=shapelet_sizes,
+            optimizer=tf.optimizers.Adam(.01),
+            batch_size=16,
+            weight_regularizer=0.01,
+            max_iter=iters,
+            random_state=42,
+            verbose=0)
+            
+        shp_clf.fit(norm_samples, labels)
+
+        # predict the samples
+        score = shp_clf.score(norm_samples, labels)
+        locations = shp_clf.locate(norm_samples[:len(pos_indexes)])
+
+        self.RetriveAccuracy(pos_indexes, locations)
+
     def Bipartition_score(self, distances, pos_num, display=False):
         '''
         description: 针对一个 distances 的 二分类的最大分类精度
@@ -126,6 +168,20 @@ class Shapelets_mx():
             plt.show()
         
         return score, thre
+    
+    def RetriveAccuracy(self, sample_indexes, locations):
+        distances = self.cls_annotationdict.Retrive_distance(self.word, sample_indexes, locations)
+
+        correct_num = 0
+        for dis in distances:
+            if dis == 0:
+                correct_num += 1
+        accueacy = correct_num/len(distances)
+
+        print(distances)
+        print(accueacy)
+        
+        return accueacy
 
 
 def Shapelets_Rangelength(pos_indexes, pos_samples, neg_samples, lengthrange):

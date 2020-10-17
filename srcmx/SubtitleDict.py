@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-10-15 16:06:05
+LastEditTime: 2020-10-17 15:44:27
 '''
 import os
 import re
@@ -267,22 +267,40 @@ class AnnotationDict:
         joblib.dump(annotationdict, '../data/annotationdict.pkl')
         return annotationdict
     
-    def CalculateAccuracy_with_locs(self, word, locs, thres=0.5):
+    def Retrive_distance(self, word, indexes, locs):
+        '''
+        description: 根据对 Word 找到的位置计算 retrieve 与真实的差距
+        param: 
+            word: 搜索的关键词
+            indexes: 候选 sub-sequences 的索引位置
+            locs: 结果在 sub-sequences 的定位
+        return: 
+        author: mario
+        '''
         if word not in self.annotation_dict.keys():
             print('the word in not in the annotation dictionary')
+            return None
+        # 获取真实的 word 的所在位置
         Records = self.annotation_dict[word]
-
+        
+        # 计算真实位置 在 retrieve 找寻过程中的搜寻结果
         rangedis = [float('inf')] * len(Records)
         for index, record in enumerate(Records):
-            [q_index, q_begin, q_end] = record
-            for r_index, r_begin, r_end in locs:
+            r_index, r_begin, r_end = record
+
+            for i, q_loc in enumerate(locs):
+                # get the retrieve locs and indexs 
+                q_index, q_base = indexes[i]
+                q_begin, q_end = q_loc + q_base
+                
+                # calculate the nearest distance 
                 if q_index == r_index:
                     if r_begin <= q_begin <= r_end or r_begin <= q_end <= r_end:
                         rangedis[index] = 0
                     elif q_begin <= r_begin <= q_end or q_begin <= r_end <= q_end:
                         rangedis[index] = 0
                     else:
-                        dis = min(abs([q_begin-r_begin, q_begin-r_end, q_end-r_begin, q_end-r_end]))
+                        dis = min(np.abs([q_begin-r_begin, q_begin-r_end, q_end-r_begin, q_end-r_end]))
                         if dis < rangedis[index]:
                             rangedis[index] = dis
         return rangedis
