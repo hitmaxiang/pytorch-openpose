@@ -352,20 +352,12 @@ def Demons_SL_video_clip(clipindex, poseclip):
         index += 1
 
 
-if __name__ == "__main__":
-
-    args = sys.argv[1:]
-    begin = 0
-    for arg in args:
-        begin = int(arg)
-
+def Test(Code):
     destfolder = '/home/mario/sda/signdata/Scottish parliament/bsl-cls/normal'
     # destfolder = '/home/mario/sda/signdata/bbcpose'
     # destfolder = '/home/hit605/public/Upload/mx/bbcpose'
     filenames = os.listdir(destfolder)
-
-    Code = 5
-
+    begin = 0
     if Code == 1:  # random choose one file to estimation
         print('testcode1')
         filename = filenames[np.random.randint(len(filenames))]
@@ -401,20 +393,29 @@ if __name__ == "__main__":
         Verifypkldata(destfolder, '../data/motionsdic.pkl')
     
     elif Code == 5:
+        print('testcode5')
         Recpoint = [(350, 100), (700, 400)]
         filenames.sort()
         for filename in filenames:
             if filename.endswith('mp4'):
-                video = cv2.VideoCapture(filename)
+                filepath = os.path.join(destfolder, filename)
+                video = cv2.VideoCapture(filepath)
+                print(filename)
                 if video.isOpened():
+                    print('video is open')
                     while True:
                         ret, frame = video.read()
                         if ret is False:
                             break
-                        cv2.rectangle(frame, Recpoint[0], Recpoint[1])
+                        cv2.rectangle(frame, Recpoint[0], Recpoint[1], color=[0, 0, 255], thickness=1)
                         cv2.imshow('frame', frame)
                         key = cv2.waitKey(10) & 0xff
                         if key == ord('q'):
                             break
                     video.release()
         cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+
+    Test(5)
