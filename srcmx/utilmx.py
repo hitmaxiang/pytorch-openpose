@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-08-27 20:41:43
 LastEditors: mario
-LastEditTime: 2020-09-25 14:32:21
+LastEditTime: 2020-10-20 12:58:57
 '''
 import os
 import re
@@ -14,6 +14,20 @@ from tslearn import metrics
 from scipy.io import loadmat
 from numba import jit
 from sklearn.preprocessing import scale
+
+
+# @jit
+def Calculate_shapelet_distance(query, timeseries):
+    m_len = len(query)
+    least_distance = np.linalg.norm(query - timeseries[:m_len])
+    distance = least_distance
+    best_loc = 0
+    for loc in range(1, len(timeseries)-m_len+1):
+        distance = np.linalg.norm(query - timeseries[loc:loc+m_len])
+        if distance < least_distance:
+            least_distance = distance
+            best_loc = loc
+    return least_distance, best_loc
 
 
 def FaceDetect(frame):
@@ -45,7 +59,7 @@ def FaceDetect(frame):
     return faces, frame
 
 
-def Getvideoframes(dirname):
+def Write_frames_counts(dirname):
     '''
     description: get the infomation of the video framnumbers, write the file with the format
         ['videoname, framcounts, maximumframeinsubtitle']
@@ -92,46 +106,75 @@ def Getvideoframes(dirname):
     with open('../data/videoframeinfo.txt', 'w') as f:
         for i in list(countdict.keys()):
             f.write('e%d.avi\t%6d\t%6d\t%6d\n' % (i, startdict[i], countdict[i], maxframdict[i]))
+            
 
+class Records_Read_Write():
+    def __init__(self):
+        pass
 
-def ReadRecord(recordfile):
-    '''
-    description: extract the data (test data) from the record data
-    param {type} 
-    return {type} 
-    author: mario
-    '''
-    RecordsDict = {}
-    with open(recordfile, 'r') as f:
-        lines = f.readlines()
-    params_pattern = r'lenth:\s*(\d+),\s*iters:\s*(\d+),\s*feature:\s*(\d+)'
-    score_pattern = r'score:\s*(\d*.\d+)$'
-    locs_pattern = r'Locs:(.*)$'
-    for line in lines:
-        params = re.findall(params_pattern, line)
-        if len(params) != 0:
-            key = '-'.join(params[0])
-            if key not in RecordsDict.keys():
-                RecordsDict[key] = {'num': 1}
-                RecordsDict[key]['score'] = []
-                RecordsDict[key]['location'] = []
-            else:
-                RecordsDict[key]['num'] += 1
-            continue
+    def Read_shaplets_cls_Records(self, filepath):
+        '''
+        description: extract the data (test data) from the record data
+        param {type} 
+        return {type} 
+        author: mario
+        '''
+        RecordsDict = {}
+        with open(filepath, 'r') as f:
+            lines = f.readlines()
+        params_pattern = r'word:\s*(\w+),.*lenth:\s*(\d+),\s*iters:\s*(\d+),\s*feature:\s*(\d+)'
+        score_pattern = r'score:\s*(\d*.\d+)$'
+        locs_pattern = r'Locs:(.*)$'
+        for line in lines:
+            params = re.findall(params_pattern, line)
+            
+            if len(params) != 0:
+                word = params[0][0]
+                args = params[0][1:]
+                key = '-'.join(args)
+                if word not in RecordsDict.keys():
+                    RecordsDict[word] = {}
+                    temp_dict = {}
+                else:
+                    if key not in RecordsDict[word].keys():
+                        temp_dict = {}
+                    else:
+                        temp_dict = RecordsDict[word][key]
 
-        score = re.findall(score_pattern, line)
-        if len(score) != 0:
-            RecordsDict[key]['score'].append(float(score[0]))
-            continue
-        
-        locs = re.findall(locs_pattern, line)
-        if len(locs) != 0:
-            locs = locs[0].split()
-            locs = [int(d) for d in locs]
-            RecordsDict[key]['location'].append(locs)
-        
-    return RecordsDict
+                if temp_dict == {}:
+                    temp_dict = {'num': 1}
+                    temp_dict['score'] = []
+                    temp_dict['location'] = []
+                else:
+                    temp_dict['num'] += 1
+                
+                RecordsDict[word][key] = temp_dict
+                continue
+
+            score = re.findall(score_pattern, line)
+            if len(score) != 0:
+                RecordsDict[word][key]['score'].append(float(score[0]))
+                continue
+            
+            locs = re.findall(locs_pattern, line)
+            if len(locs) != 0:
+                locs = locs[0].split()
+                locs = [int(d) for d in locs]
+                RecordsDict[word][key]['location'].append(locs)
+            
+        return RecordsDict
+    
+    def Write_shaplets_cls_Records(self, filepath, word, m_len, iters, featuremode, score, locs):
+
+        with open(filepath, 'a+') as f:
+            f.write('\nthe test of word: %s, with lenth: %d, iters: %d, feature: %d\n' %
+                    (word, m_len, iters, featuremode))
+            f.write('score:\t%f\n' % score)
+            f.write('Locs:')
+            for loc in locs:
+                f.write('\t%d' % loc[0])
+            f.write('\n\n')
 
 
 if __name__ == "__main__":
-    ReadRecord('../data/record.txt')
+    Records_Read_Write().Read_shaplets_cls_Records('../data/record.txt')

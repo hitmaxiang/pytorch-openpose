@@ -16,6 +16,9 @@ from src.hand import Hand
 body_estimation = Body('../model/body_pose_model.pth')
 hand_estimation = Hand('../model/hand_pose_model.pth')
 
+# the recpoint of the bbc news
+gl_RECPOINT = [(350, 100), (700, 400)]
+
 
 def Extract_MotionData_from_Video(videopath, outname, mode='body', overwrite=False):
     '''
@@ -45,7 +48,7 @@ def Extract_MotionData_from_Video(videopath, outname, mode='body', overwrite=Fal
         MotionMat = np.zeros((count, 18, 3))
         outname = '../data/%s-bd' % outname
     # the user-defined ROI
-    Recpoint = [(350, 100), (700, 400)]
+    Recpoint = gl_RECPOINT
 
     npyname = '%s.npy' % outname
     if os.path.isfile(npyname) and overwrite is False:
@@ -84,7 +87,7 @@ def Demo_motion_of_Video(inputfile, mode):
         raise Exception("the video file can not be open")
     
     # RECPOINT = ((400, 100), (640, 400))
-    RECPOINT = [(350, 100), (700, 400)]
+    RECPOINT = gl_RECPOINT
     COUNT = videofile.get(cv2.CAP_PROP_FRAME_COUNT)
 
     while True:
@@ -212,9 +215,9 @@ def CheckNpydata(videopath, datapath):
     mode = 'bodyhand'
     if PoseMat.shape[1] == 18:
         mode = 'body'
-    Recpoint = [(350, 100), (700, 400)]
+    Recpoint = gl_RECPOINT
 
-    index = 0
+    index = Recpoint
     while True:
         ret, frame = video.read()
         if ret is False:
@@ -303,7 +306,7 @@ def Verifypkldata(videodir, pklfilepath):
             print('the count number is not equal')
         randframs = np.random.randint(count, size=(1000,))
 
-        Recpoint = [(350, 100), (700, 400)]
+        Recpoint = gl_RECPOINT
         for randframe in randframs:
             video.set(cv2.CAP_PROP_POS_FRAMES, randframe)
             ret, frame = video.read()
@@ -322,7 +325,7 @@ def Demons_SL_video_clip(clipindex, poseclip):
     author: mario
     '''
     videodir = '/home/mario/sda/signdata/bbcpose'
-    Recpoint = [(350, 100), (700, 400)]
+    Recpoint = gl_RECPOINT
 
     videoindex, beginindex, endindex = clipindex[:3]
     videoname = 'e%d.avi' % (videoindex+1)
@@ -356,11 +359,12 @@ if __name__ == "__main__":
     for arg in args:
         begin = int(arg)
 
-    destfolder = '/home/mario/sda/signdata/bbcpose'
+    destfolder = '/home/mario/sda/signdata/Scottish parliament/bsl-cls/normal'
+    # destfolder = '/home/mario/sda/signdata/bbcpose'
     # destfolder = '/home/hit605/public/Upload/mx/bbcpose'
     filenames = os.listdir(destfolder)
 
-    Code = 4
+    Code = 5
 
     if Code == 1:  # random choose one file to estimation
         print('testcode1')
@@ -395,3 +399,22 @@ if __name__ == "__main__":
         if not os.path.exists('../data/motionsdic.pkl'):
             CombineMotiondata(npydatafolder, 'body')
         Verifypkldata(destfolder, '../data/motionsdic.pkl')
+    
+    elif Code == 5:
+        Recpoint = [(350, 100), (700, 400)]
+        filenames.sort()
+        for filename in filenames:
+            if filename.endswith('mp4'):
+                video = cv2.VideoCapture(filename)
+                if video.isOpened():
+                    while True:
+                        ret, frame = video.read()
+                        if ret is False:
+                            break
+                        cv2.rectangle(frame, Recpoint[0], Recpoint[1])
+                        cv2.imshow('frame', frame)
+                        key = cv2.waitKey(10) & 0xff
+                        if key == ord('q'):
+                            break
+                    video.release()
+        cv2.destroyAllWindows()

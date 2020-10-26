@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:25:13
 LastEditors: mario
-LastEditTime: 2020-10-17 23:38:12
+LastEditTime: 2020-10-20 14:21:43
 '''
 import time
 import utilmx
@@ -14,10 +14,13 @@ import numpy as np
 import tensorflow as tf
 import PreprocessingData as PD
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import scale
-from tslearn import metrics
 from numba import jit
+from tslearn import metrics
+from tslearn.shapelets import LearningShapelets
+from tslearn.preprocessing import TimeSeriesScalerMinMax
+from sklearn.preprocessing import scale
 from SubtitleDict import SubtitleDict, AnnotationDict
+from utilmx import Records_Read_Write
 
 
 class Shapelets_mx():
@@ -53,11 +56,26 @@ class Shapelets_mx():
             
         return samples, clip_indexes[:len(pos_indexes), :2]
     
-    def train(self, word, method):
-        self.word = word
-        samples, pos_indexes = self.Getsamples(word)
-        for m in range(4, 20):
-            self.FindShaplets_dtw_methods(samples, pos_indexes, m)
+    def train(self, word=None, method=0):
+        if word is None:
+            words = []
+            for keyword in self.cls_annotationdict.keys():
+                if keyword in self.cls_subtitledict.keys():
+                    words.append(keyword)
+        else:
+            words = [word]
+        
+        for word in words:
+            self.word = word
+            samples, pos_indexes = self.Getsamples(word)
+            
+            for m in range(4, 20):
+                if method == 0:
+                    self.FindShaplets_dtw_methods(samples, pos_indexes, m)
+                elif method == 1:
+                    self.FindShaplets_tslearn_class(samples, pos_indexes, m)
+                elif method == 2:
+                    self.FindShaplets_brute_force_ED(samples, pos_indexes, m)
     
     def FindShaplets_dtw_methods(self, samples, pos_indexes, m_len):
         # 对样本集合进行归一化处理
@@ -104,29 +122,74 @@ class Shapelets_mx():
         labels[:len(pos_indexes)] = 1
 
         # prepare the samples to satisfy the format demand
-        samples = tslearn.utils.to_time_series(samples)
-        norm_samples = tslearn.preprocessing.TimeSeriesScalerMinMax().fit_transform(samples)
+        samples = tslearn.utils.to_time_series_dataset(samples)
+        norm_samples = TimeSeriesScalerMinMax().fit_transform(samples)
         norm_samples = np.nan_to_num(norm_samples)
 
         # train and fit the shapelts_from_tslearn model
         shapelet_sizes = {m_len: 1}
-        shp_clf = tslearn.shapelets.LearningShapelets(
-
-            n_shapelets_per_size=shapelet_sizes,
-            optimizer=tf.optimizers.Adam(.01),
-            batch_size=16,
-            weight_regularizer=0.01,
-            max_iter=iters,
-            random_state=42,
-            verbose=0)
+        shp_clf = LearningShapelets(n_shapelets_per_size=shapelet_sizes,
+                                    optimizer=tf.optimizers.Adam(.01),
+                                    batch_size=16,
+                                    weight_regularizer=0.01,
+                                    max_iter=iters,
+                                    random_state=42,
+                                    verbose=0)
             
         shp_clf.fit(norm_samples, labels)
 
         # predict the samples
         score = shp_clf.score(norm_samples, labels)
         locations = shp_clf.locate(norm_samples[:len(pos_indexes)])
+        
+        Records_Read_Write().Write_shaplets_cls_Records(filepath='../data/record.txt', 
+                                                        word=self.word,
+                                                        m_len=m_len,
+                                                        iters=iters,
+                                                        featuremode=0,
+                                                        score=score,
+                                                        locs=locations)
+        # self.RetriveAccuracy(pos_indexes, locations)
+    
+    def FindShaplets_brute_force_ED(self, samples, pos_indexes, m_len):
+        
+        begin_time = time.time()
+        # 对样本集合进行归一化处理
+        # samples = PD.NormlizeData(samples, mode=1)
 
-        self.RetriveAccuracy(pos_indexes, locations)
+        # 设置最后保留的 shapelet
+        best_score = 0
+        best_query = None
+        best_locs = None
+        
+        # 从所有的 pos_sample 中提取所有可能的 query 子序列
+        for sample_id in range(len(pos_indexes)):  
+
+            pos_sample = samples[sample_id]
+            for q_index in range(len(pos_sample)-m_len+1):
+
+                query = pos_sample[q_index:q_index+m_len]
+
+                # 使用该 query 对所有样本数据进行距离求取
+                temp_record = np.zeros((len(samples), 3))
+                
+                for sample_id in range(len(samples)):
+                    sample = samples[sample_id]
+                    # path, dis = metrics.dtw_subsequence_path(query, sample)
+                    dis, loc = utilmx.Calculate_shapelet_distance(query, sample)
+                    temp_record[sample_id] = np.array([dis, loc, loc+m_len])
+
+                tempscore, thre = self.Bipartition_score(temp_record[:, 0], len(pos_indexes))
+                if tempscore > best_score:
+                    best_score = tempscore
+                    best_query = query
+                    best_locs = temp_record
+        
+        print('each sample cost time %f seconds' % (time.time()-begin_time))
+        # tempscore, thre = self.Bipartition_score(best_locs[:, 0], len(pos_indexes), display=True)
+        print('\n\n the length with % d and score is %f' % (m_len, tempscore))
+        accuracy = self.RetriveAccuracy(pos_indexes, best_locs[:len(pos_indexes), 1:])
+        print(accuracy)
 
     def Bipartition_score(self, distances, pos_num, display=False):
         '''
@@ -182,7 +245,39 @@ class Shapelets_mx():
         print(accueacy)
         
         return accueacy
-
+    
+    def RetriveAccuracy_with_record_file(self, word, filepath):
+        self.word = word
+        best_accuracy = 0
+        best_arg = []
+        pos_indexes = self.Getsamples(word)[1]
+        record_dict = Records_Read_Write().Read_shaplets_cls_Records(filepath)
+        temp_record = np.zeros((len(pos_indexes), 2))
+        if self.word in record_dict.keys():
+            key_record_dict = record_dict[self.word]
+            for key_args in key_record_dict.keys():
+                m_len = int(key_args.split('-')[0])
+                for record in key_record_dict[key_args]['location']:
+                    temp_record[:, 0] = np.array(record)
+                    temp_record[:, 1] = np.array(record) + m_len
+                    accuracy = self.RetriveAccuracy(pos_indexes, temp_record)
+                    if accuracy > best_accuracy:
+                        best_accuracy = accuracy
+                        best_arg = [key_args]
+                    elif accuracy == best_accuracy:
+                        best_arg.append(key_args)
+        print(best_accuracy, best_arg)
+            
+    def Retrieve_Verification(self):
+        words = self.cls_annotationdict.annotation_dict.keys()
+        for word in words:
+            if word not in self.cls_subtitledict.subtitledict.keys():
+                continue
+            pos_indexes, neg_indexes = self.cls_subtitledict.ChooseSamples(word)
+            indexes = np.array(pos_indexes)[:, :3]
+            # verification test the real word is in the candidate clips
+            retrieve_accuracy = self.cls_annotationdict.Retrieve_Verification(word, indexes)
+            print('the verification of %s is %f\n' % (word, retrieve_accuracy))
 
 def Shapelets_Rangelength(pos_indexes, pos_samples, neg_samples, lengthrange):
     '''
@@ -272,7 +367,9 @@ def Test(testcode):
 
     elif testcode == 1:
         cls_shapelet = Shapelets_mx(motionsdictpath, subtitledictpath, annotationdictpath)
-        cls_shapelet.train('snow')
+        cls_shapelet.train('work', method=1)
+        # cls_shapelet.RetriveAccuracy_with_record_file('snow', '../data/record_server.txt')
+        # cls_shapelet.Retrieve_Verification()
         
 
 

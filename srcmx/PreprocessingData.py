@@ -4,10 +4,11 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:34:31
 LastEditors: mario
-LastEditTime: 2020-10-15 20:24:41
+LastEditTime: 2020-10-20 11:21:09
 '''
 import numpy as np
 from numba import jit
+import sklearn.preprocessing as PP
 from sklearn.preprocessing import scale
 
 
@@ -21,6 +22,10 @@ def MotionJointSelect(motiondata, datamode, featuremode):
     
     # the body mode motiondata has 18 joints of the whole body
     if datamode == 'body':
+        # let the motiondata based on the chest node position
+        for i in range(len(motiondata)):
+            motiondata[i] -= motiondata[i, 1, :]
+        
         jointindex = [i for i in range(18)]
         # only the upper body, is needed
         if featuremode == 0:
@@ -73,5 +78,8 @@ def NormlizeData(samples, mode=0):
     if mode == 0:
         for s_id in range(len(samples)):
             samples[s_id] = scale(samples[s_id], axis=0)
+    elif mode == 1:
+        for s_id in range(len(samples)):
+            samples[s_id] = PP.minmax_scale(samples[s_id], axis=0)
 
     return samples

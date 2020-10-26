@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-10-17 15:44:27
+LastEditTime: 2020-10-20 13:08:44
 '''
 import os
 import re
@@ -37,6 +37,10 @@ class SubtitleDict():
         return: None 
         author: mario
         '''
+
+        # get the maximum framcount of the videos
+        self.FrameCounts = self.GetFrameCounts()
+        
         if (overwrite is True) or (not os.path.exists(dictfile)):
             if os.path.exists(matfile) and matfile.endswith('mat'):
                 self.subtitledict = self.Construct_from_Mat(matfile, midfile)
@@ -48,8 +52,7 @@ class SubtitleDict():
         else:
             print('the .pkl dictfile path is needed')
         
-        # get the maximum framcount of the videos
-        self.FrameCounts = self.GetFrameCounts()
+        
         
     def Construct_from_Mat(self, inputfile, midfile=False):
         '''
@@ -119,12 +122,15 @@ class SubtitleDict():
                 # when the previous or back subtitlefram is close, it should be also consider 
                 # as the candidate of the words of current subtitle
                 if jndex >= 1:
-                    if videodata[jndex-1][1] + frame_diff > record[0]:
-                        exbegin = videodata[jndex-1][0]
+                    # if videodata[jndex-1][1] + frame_diff > record[0]:
+                    exbegin = videodata[jndex-1][0]
                     
                 if jndex <= len(videodata)-2:
-                    if record[1] + frame_diff > videodata[jndex+1][0]:
-                        exend = videodata[jndex+1][1]
+                    # if record[1] + frame_diff > videodata[jndex+1][0]:
+                    exend = videodata[jndex+1][1]
+                
+                if exend > self.FrameCounts[index]:
+                    continue
                 
                 # deal with the sentence string
                 words = self.Split_Sentence2words(record[2], mode=3)
@@ -304,6 +310,27 @@ class AnnotationDict:
                         if dis < rangedis[index]:
                             rangedis[index] = dis
         return rangedis
+    
+    def Retrieve_Verification(self, word, indexes):
+        if word not in self.annotation_dict.keys():
+            print('the %s is not in the annotation dictionary')
+            return 0
+
+        # 获取真实的 word 的所在位置
+        Records = self.annotation_dict[word]
+
+        Verifications = np.zeros((len(Records),))
+        for index, record in enumerate(Records):
+            r_index, r_begin, r_end = record
+
+            for i in range(len(indexes)):
+                video_index, b_index, e_index = indexes[i]
+
+                if r_index == video_index:
+                    if r_begin > b_index and r_end < e_index:
+                        Verifications[index] = 1
+        return np.mean(Verifications)
+
         
 
 def Test(testcode):
@@ -322,4 +349,4 @@ def Test(testcode):
 
 
 if __name__ == "__main__":
-    Test(1)
+    Test(0)
