@@ -4,6 +4,7 @@ import cv2
 import os
 import time
 import joblib
+import utilmx
 import numpy as np
 import matplotlib.pyplot as plt
 from copy import deepcopy
@@ -20,7 +21,7 @@ hand_estimation = Hand('../model/hand_pose_model.pth')
 gl_RECPOINT = [(350, 100), (700, 400)]
 
 
-def Extract_MotionData_from_Video(videopath, outname, mode='body', overwrite=False):
+def Extract_MotionData_from_Video(videopath, outpath, Recpoint, mode='body', overwrite=False):
     '''
     description: Extract the motion data from video and save as a data file
     param:
@@ -43,36 +44,39 @@ def Extract_MotionData_from_Video(videopath, outname, mode='body', overwrite=Fal
     count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     if mode == 'bodyhand':
         MotionMat = np.zeros((count, 60, 3))
-        outname = '../data/%s-hb' % outname
+        # outname = '../data/%s-hb' % outname
     else:
         MotionMat = np.zeros((count, 18, 3))
-        outname = '../data/%s-bd' % outname
+        # outname = '../data/%s-bd' % outname
+    
     # the user-defined ROI
-    Recpoint = gl_RECPOINT
+    # Recpoint = gl_RECPOINT
 
-    npyname = '%s.npy' % outname
-    if os.path.isfile(npyname) and overwrite is False:
-        return
+    # npyname = '%s.npy' % outname
 
+    # if os.path.isfile(npyname) and overwrite is False:
+        # return
+    outname = os.path.split(outpath)[1]
     index = 0
     while True:
         ret, frame = video.read()
-        # if ret is False or index > 40:
-        if ret is False:
+        if ret is False or index > 200:
+        # if ret is False:
             break
+        print('%s-%d/%d' % (outname, index, int(count)))
         # print the progress information every 100 frame
         if index % 100 == 0:
-            print('%s-%d/%d' % (name, index, int(count)))
+            print('%s-%d/%d' % (outname, index, int(count)))
         # crop the ROI of the frame
         img = frame[Recpoint[0][1]:Recpoint[1][1], Recpoint[0][0]:Recpoint[1][0], :]
         PoseMat = MotionData_every_frame(img, mode, display=False)
         MotionMat[index, :, :] = PoseMat
         index += 1
-    np.save(npyname, MotionMat)
-    print('%s is saved!')
+    joblib.dump(MotionMat, outpath)
+    print('%s is saved!' % outpath)
 
 
-def Demo_motion_of_Video(inputfile, mode):
+def Demo_motion_of_Video(inputfile, mode, recpoint, random=True, Maxiter=None):
     '''
     description: demonstrate the extract data of the inputfile
     param:
@@ -87,21 +91,35 @@ def Demo_motion_of_Video(inputfile, mode):
         raise Exception("the video file can not be open")
     
     # RECPOINT = ((400, 100), (640, 400))
-    RECPOINT = gl_RECPOINT
-    COUNT = videofile.get(cv2.CAP_PROP_FRAME_COUNT)
+    RECPOINT = recpoint
+    COUNT = int(videofile.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    if Maxiter is None:
+        Maxiter = COUNT
+    else:
+        Maxiter = min(COUNT, Maxiter)
+
+    Iterations = 0
 
     while True:
         # random choose the frame to demonstrate
-        randframe = np.random.randint(COUNT)
-        videofile.set(cv2.CAP_PROP_POS_FRAMES, randframe)
+        if random is True:
+            videofile.set(cv2.CAP_PROP_POS_FRAMES, np.random.randint(COUNT))
         ret, frame = videofile.read()
-        if ret is False:
+        Iterations += 1
+        if ret is False or Iterations >= Maxiter:
             break
-        print('%d/%d' % (randframe, int(COUNT)), end='\r')
+
+        print('%20s' % ' ', end='\r')
+        print('%d/%d/%d' % (Iterations, Maxiter, COUNT), end='\r')
         # cv2.rectangle(frame, RECPOINT[0], RECPOINT[1], [0, 0, 255], 2)
         img = frame[RECPOINT[0][1]:RECPOINT[1][1], RECPOINT[0][0]:RECPOINT[1][0], :]
         # cv2.imwrite('%d.jpg' % randframe, img)
         MotionData_every_frame(deepcopy(img), mode, display=True)
+        
+        key = cv2.waitKey(5) & 0xff
+        if key == ord('q'):
+            break
 
 
 def MotionData_every_frame(oriImg, mode='body', display=False):
@@ -178,13 +196,15 @@ def MotionData_every_frame(oriImg, mode='body', display=False):
         canvas = deepcopy(oriImg)
         canvas = util.draw_bodypose(canvas, candidate, subset)
         if mode == 'bodyhand':
-            canvas = util.draw_handpose(canvas, all_hand_peaks)
-            plt.imshow(canvas[:, :, [2, 1, 0]])
-            plt.axis('off')
-            plt.show()
+            canvas = utilmx.draw_handpose_by_opencv(canvas, all_hand_peaks)
+            cv2.imshow('bodyhand', canvas)
+            # canvas = util.draw_handpose(canvas, all_hand_peaks)
+            # plt.imshow(canvas[:, :, [2, 1, 0]])
+            # plt.axis('off')
+            # plt.show()
         else:  # only body motion can displayed with opencv
             cv2.imshow('bodydata', canvas)
-            cv2.waitKey(10)
+            # cv2.waitKey(10)
 
     # return the motion data
     if mode != 'bodyhand':
@@ -193,7 +213,7 @@ def MotionData_every_frame(oriImg, mode='body', display=False):
     return PoseMat
 
 
-def CheckNpydata(videopath, datapath):
+def Checkout_motion_data(videopath, datapath, recpoint):
     '''
     description: verify the motiondata's correctness
     param: 
@@ -203,7 +223,11 @@ def CheckNpydata(videopath, datapath):
     author: mario
     '''
     video = cv2.VideoCapture(videopath)
-    PoseMat = np.load(datapath)
+    if datapath.endswith('npy'):
+        PoseMat = np.load(datapath)
+    elif datapath.endswith('pkl'):
+        PoseMat = joblib.load(datapath)
+    
     if not video.isOpened():
         print('the file %s is not exist' % videopath)
         return
@@ -212,18 +236,19 @@ def CheckNpydata(videopath, datapath):
     if count != PoseMat.shape[0]:
         print('the count number is not equal')
     
+    # mincount = min(count, PoseMat.shape[0])
+
     mode = 'bodyhand'
     if PoseMat.shape[1] == 18:
         mode = 'body'
-    Recpoint = gl_RECPOINT
 
-    index = Recpoint
+    index = 0
     while True:
         ret, frame = video.read()
         if ret is False:
             break
         print('%d/%d' % (index, int(count)), end='\r')
-        img = frame[Recpoint[0][1]:Recpoint[1][1], Recpoint[0][0]:Recpoint[1][0], :]
+        img = frame[recpoint[0][1]:recpoint[1][1], recpoint[0][0]:recpoint[1][0], :]
         pose = PoseMat[index, :, :]
         if not DisplayPose(img, pose, mode):
             break
@@ -240,7 +265,7 @@ def DisplayPose(img, pose, mode='body'):
     return {type} 
     author: mario
     '''
-    if mode == 'body':
+    if mode == 'body' or mode == 'bodyhand':
         subset = np.zeros((1, 20))
         candidate = np.zeros((20, 4))
         for i in range(18):
@@ -250,12 +275,19 @@ def DisplayPose(img, pose, mode='body'):
                 subset[0, i] = i
             candidate[i, :2] = pose[i, :2]
         canvas = util.draw_bodypose(img, candidate, subset)
+        
+        if mode == 'bodyhand':
+            peaks = pose[18:, :2]
+            peaks = np.reshape(peaks, (2, -1, 2))
+            canvas = utilmx.draw_handpose_by_opencv(canvas, peaks)
+
         cv2.imshow('img', canvas)
         key = cv2.waitKey(30)
         if key & 0xff == ord('q'):
-            return False
+            return False 
     else:
         pass
+
     return True
         
 
@@ -352,37 +384,105 @@ def Demons_SL_video_clip(clipindex, poseclip):
         index += 1
 
 
-def Test(Code):
-    destfolder = '/home/mario/sda/signdata/Scottish parliament/bsl-cls/normal'
-    # destfolder = '/home/mario/sda/signdata/bbcpose'
-    # destfolder = '/home/hit605/public/Upload/mx/bbcpose'
-    filenames = os.listdir(destfolder)
-    begin = 0
-    if Code == 1:  # random choose one file to estimation
-        print('testcode1')
-        filename = filenames[np.random.randint(len(filenames))]
-        filepath = os.path.join(destfolder, filename)
-        Demo_motion_of_Video(filepath)
+def Demo_original_video(inputfile, random=False, Recpoint=None, Maxiter=None):
+    video = cv2.VideoCapture(inputfile)
+    if video.isOpened():
+        width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        framecount = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        if Recpoint is None:
+            Recpoint = [(0, 0), (width, height)]
+        Iterations = 0
+        while True:
+            ret, frame = video.read()
+            Iterations += 1
+            if ret is False or (Maxiter is not None and Iterations >= Maxiter):
+                break
+            
+            if random is True:
+                video.set(cv2.CAP_PROP_POS_FRAMES, np.random.randint(framecount))
+                        
+            cv2.rectangle(frame, Recpoint[0], Recpoint[1], color=[0, 0, 255], thickness=2)
+            cv2.imshow('demo-video', frame)
+
+            key = cv2.waitKey(10) & 0xff
+            if key == ord('q'):
+                break
+    video.release()
+    cv2.destroyAllWindows()
+
+
+def Test(Code, init=False, mode='body', dataset='spbsl', server=False):
+
+    # initialize the data source according the input option
+    if dataset == 'spbsl':
+        if server is False:
+            videofolder = '/home/mario/sda/signdata/Scottish parliament/bsl-cls/normal'
+        else:
+            videofolder = '~/signdata/spbsl/normal'
+
+        datadir = '../data/spbsl'
+        Recpoint = [(700, 100), (1280, 720)]
+
+    elif dataset == 'bbc':
+        if server is False:
+            videofolder = '/home/mario/sda/signdata/bbcpose'
+        else:
+            videofolder = '~/signdata/bbc'
+        datadir = '../data/bbc'
+        Recpoint = [(350, 100), (700, 400)]
+    
+    # get the video-names with the giving videofolder
+    filenames = os.listdir(videofolder)
+    filenames.sort()
+
+    if Code == 0:
+        # demonstrate the original video file
+        print('play the video and verify the ROI rectangle')
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1]
+            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
+                filepath = os.path.join(videofolder, filename)
+                Demo_original_video(filepath, random=True, Recpoint=Recpoint)
+    
+    elif Code == 1:
+        # random choose one file to estimation
+        print('random choose files to demonstrate the motion extraction process')
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1]
+            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
+                filepath = os.path.join(videofolder, filename)
+                print(filename)
+                # Dem_video(filepath, Recpoint=Recpoint)
+                Demo_motion_of_Video(filepath, mode, recpoint=Recpoint, Maxiter=200)
+    
     elif Code == 2:
-        print('testcode2')
-        filenames.sort()
-        end = min(len(filenames), begin+10)
-        for filename in filenames[begin:end]:
-            filepath = os.path.join(destfolder, filename)
-            name = filename.split('.')[0]
-            print(name)
-            Extract_MotionData_from_Video(filepath, name, mode='body')
+        print('extract the motion data from the videos and save')
+        for filename in filenames:
+            complet_files = utilmx.Records_Read_Write().Get_extract_ed_ing_files(datadir, init)
+            ext = os.path.splitext(filename)[1]
+            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
+                filepath = os.path.join(videofolder, filename)
+                outname = 'video-%s-%s.pkl' % (filename[:3], mode)
+                if outname not in complet_files:
+                    utilmx.Records_Read_Write().Add_extract_ed_ing_files(datadir, outname)
+                    outpath = os.path.join(datadir, outname)
+                    Extract_MotionData_from_Video(filepath, outpath, Recpoint, mode)
+                    break
+
     elif Code == 3:
-        print('testcode3')
-        filenames.sort()
-        num = np.random.randint(len(filenames))
-        for filename in filenames[num:]:
-            filepath = os.path.join(destfolder, filename) 
-            name = filename.split('.')[0]
-            datapath = '../data/%s-bd.npy' % name
-            if os.path.isfile(datapath):
-                print(name)
-                CheckNpydata(filepath, datapath)
+        # check the correctness of the extracted motion data
+        print('check the correctness of the extracted motion data')
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1]
+            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
+                filepath = os.path.join(videofolder, filename)
+                outname = 'video-%s-%s.pkl' % (filename[:3], mode)
+                outpath = os.path.join(datadir, outname)
+                if os.path.isfile(outpath):
+                    print(outname)
+                    Checkout_motion_data(filepath, outpath, Recpoint)
     # combine the motion data files to one file
     elif Code == 4:
         npydatafolder = '/home/mario/sda/signdata/bbcpose_npy'
@@ -391,31 +491,24 @@ def Test(Code):
         if not os.path.exists('../data/motionsdic.pkl'):
             CombineMotiondata(npydatafolder, 'body')
         Verifypkldata(destfolder, '../data/motionsdic.pkl')
-    
-    elif Code == 5:
-        print('testcode5')
-        Recpoint = [(350, 100), (700, 400)]
-        filenames.sort()
-        for filename in filenames:
-            if filename.endswith('mp4'):
-                filepath = os.path.join(destfolder, filename)
-                video = cv2.VideoCapture(filepath)
-                print(filename)
-                if video.isOpened():
-                    print('video is open')
-                    while True:
-                        ret, frame = video.read()
-                        if ret is False:
-                            break
-                        cv2.rectangle(frame, Recpoint[0], Recpoint[1], color=[0, 0, 255], thickness=1)
-                        cv2.imshow('frame', frame)
-                        key = cv2.waitKey(10) & 0xff
-                        if key == ord('q'):
-                            break
-                    video.release()
-        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
+    argv = sys.argv[1:]
+    # Code, init=False, mode='body', dataset='spbsl', server=False
+    print(argv)
+    if len(argv) == 5:
+        Code = int(argv[0])
+        init = [False, True][int(argv[1])]
+        mode = ['body', 'bodyhand'][int(argv[2])]
+        dataset = ['bbc', 'spbsl'][int(argv[3])]
+        server = [False, True][int(argv[4])]
+        Test(Code, init, mode, dataset, server)
+        print(Code, init, mode, dataset, server)
 
-    Test(5)
+
+    
+
+
+    Test(3, init=True, mode='bodyhand')
+    # Test(2, init=True, mode='bodyhand')

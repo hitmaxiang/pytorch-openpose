@@ -4,11 +4,12 @@ Version: 2.0
 Autor: mario
 Date: 2020-08-27 20:41:43
 LastEditors: mario
-LastEditTime: 2020-10-20 12:58:57
+LastEditTime: 2020-10-27 18:17:14
 '''
 import os
 import re
 import cv2
+import matplotlib
 import numpy as np
 from tslearn import metrics
 from scipy.io import loadmat
@@ -174,6 +175,45 @@ class Records_Read_Write():
             for loc in locs:
                 f.write('\t%d' % loc[0])
             f.write('\n\n')
+    
+    def Get_extract_ed_ing_files(self, datadir, init=False):
+        filelists = []
+        if init is False:
+            with open(os.path.join(datadir, 'extract_ed_ing.txt'), 'r') as f:
+                lines = f.readlines()
+            for line in lines:
+                filelists.append(line)
+        else:
+            datafiles = os.listdir(datadir)
+            with open(os.path.join(datadir, 'extract_ed_ing.txt'), 'w') as f:
+                for datafile in datafiles:
+                    if os.path.splitext(datafile)[1] in ['.npy', 'pkl']:
+                        f.write('%s\n' % datafile)
+                        filelists.append(datafile)
+        return filelists
+    
+    def Add_extract_ed_ing_files(self, datadir, addfilename):
+        with open(os.path.join(datadir, 'extract_ed_ing.txt'), 'a') as f:
+            f.write('%s\n' % addfilename)
+
+
+# handpose image drawed by opencv
+def draw_handpose_by_opencv(canvas, peaks):
+    edges = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [0, 9], [9, 10],
+             [10, 11], [11, 12], [0, 13], [13, 14], [14, 15], [15, 16], [0, 17], [17, 18], [18, 19], [19, 20]]
+    
+    for i in range(len(peaks)):
+        for j in range(len(edges)):
+            x1, y1 = peaks[i][edges[j][0]]
+            x2, y2 = peaks[i][edges[j][1]]
+
+            if (x1+y1 != 0) and (x2+y2 != 0):
+                # cv2.line(canvas, (x1, y1), (x2, y2), matplotlib.colors.hsv_to_rgb([j/float(len(edges)), 1.0, 1.0])*255, thickness=2)
+                cv2.line(canvas, (int(x1), int(y1)), (int(x2), int(y2)), color=[255, 0, 0], thickness=2)
+        for k in range(len(peaks[i])):
+            x, y = peaks[i][k]
+            cv2.circle(canvas, (int(x), int(y)), 4, (0, 0, 255), thickness=-1)
+    return canvas
 
 
 if __name__ == "__main__":

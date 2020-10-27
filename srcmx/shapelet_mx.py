@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:25:13
 LastEditors: mario
-LastEditTime: 2020-10-20 14:21:43
+LastEditTime: 2020-10-27 17:48:37
 '''
 import time
 import utilmx
@@ -371,7 +371,6 @@ def Test(testcode):
         # cls_shapelet.RetriveAccuracy_with_record_file('snow', '../data/record_server.txt')
         # cls_shapelet.Retrieve_Verification()
         
-
 
 if __name__ == "__main__":
     Test(1)
