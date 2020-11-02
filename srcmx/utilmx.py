@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-08-27 20:41:43
 LastEditors: mario
-LastEditTime: 2020-10-27 18:17:14
+LastEditTime: 2020-11-02 16:35:50
 '''
 import os
 import re
@@ -214,6 +214,23 @@ def draw_handpose_by_opencv(canvas, peaks):
             x, y = peaks[i][k]
             cv2.circle(canvas, (int(x), int(y)), 4, (0, 0, 255), thickness=-1)
     return canvas
+
+
+def FindPeaks_2d(data, thre):
+    assert len(data.shape) == 2
+    map_left = np.zeros(data.shape)
+    map_left[1:, :] = data[:-1, :]
+    map_right = np.zeros(data.shape)
+    map_right[:-1, :] = data[1:, :]
+    map_up = np.zeros(data.shape)
+    map_up[:, 1:] = data[:, :-1]
+    map_down = np.zeros(data.shape)
+    map_down[:, :-1] = data[:, 1:]
+
+    peaks_binary = np.logical_and.reduce(
+        (data >= map_left, data >= map_right, data >= map_up, data >= map_down, data > thre))
+    peaks_index = list(zip(np.nonzero(peaks_binary)[1], np.nonzero(peaks_binary)[0]))  # note reverse 
+    return peaks_index
 
 
 if __name__ == "__main__":
