@@ -7,4 +7,7 @@
  # @LastEditTime: 2020-10-27 20:53:53
 ### 
 # Code, init=False, mode='body', dataset='spbsl', server=False
-python MotionEstimation.py 2 1 1 1 1
+python MotionEstimation.py 2 0 1 1 1 &
+python MotionEstimation.py 2 0 1 1 1 &
+python MotionEstimation.py 2 0 1 1 1 &
+python MotionEstimation.py 2 0 1 1 1 &

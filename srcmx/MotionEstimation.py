@@ -60,10 +60,10 @@ def Extract_MotionData_from_Video(videopath, outpath, Recpoint, mode='body', ove
     index = 0
     while True:
         ret, frame = video.read()
-        if ret is False or index > 200:
-        # if ret is False:
+        # if ret is False or index > 200:
+        if ret is False:
             break
-        print('%s-%d/%d' % (outname, index, int(count)))
+        # print('%s-%d/%d' % (outname, index, int(count)))
         # print the progress information every 100 frame
         if index % 100 == 0:
             print('%s-%d/%d' % (outname, index, int(count)))
@@ -420,7 +420,7 @@ def Test(Code, init=False, mode='body', dataset='spbsl', server=False):
         if server is False:
             videofolder = '/home/mario/sda/signdata/Scottish parliament/bsl-cls/normal'
         else:
-            videofolder = '~/signdata/spbsl/normal'
+            videofolder = '/home/mario/signdata/spbsl/normal'
 
         datadir = '../data/spbsl'
         Recpoint = [(700, 100), (1280, 720)]
@@ -429,7 +429,7 @@ def Test(Code, init=False, mode='body', dataset='spbsl', server=False):
         if server is False:
             videofolder = '/home/mario/sda/signdata/bbcpose'
         else:
-            videofolder = '~/signdata/bbc'
+            videofolder = '/home/mario/signdata/bbc'
         datadir = '../data/bbc'
         Recpoint = [(350, 100), (700, 400)]
     
@@ -459,6 +459,7 @@ def Test(Code, init=False, mode='body', dataset='spbsl', server=False):
     
     elif Code == 2:
         print('extract the motion data from the videos and save')
+        np.random.shuffle(filenames)
         for filename in filenames:
             complet_files = utilmx.Records_Read_Write().Get_extract_ed_ing_files(datadir, init)
             ext = os.path.splitext(filename)[1]
@@ -466,10 +467,11 @@ def Test(Code, init=False, mode='body', dataset='spbsl', server=False):
                 filepath = os.path.join(videofolder, filename)
                 outname = 'video-%s-%s.pkl' % (filename[:3], mode)
                 if outname not in complet_files:
+                    print(outname)
                     utilmx.Records_Read_Write().Add_extract_ed_ing_files(datadir, outname)
                     outpath = os.path.join(datadir, outname)
                     Extract_MotionData_from_Video(filepath, outpath, Recpoint, mode)
-                    break
+                    # break
 
     elif Code == 3:
         # check the correctness of the extracted motion data
@@ -496,19 +498,15 @@ def Test(Code, init=False, mode='body', dataset='spbsl', server=False):
 if __name__ == "__main__":
     argv = sys.argv[1:]
     # Code, init=False, mode='body', dataset='spbsl', server=False
-    print(argv)
+    # print(argv)
     if len(argv) == 5:
         Code = int(argv[0])
         init = [False, True][int(argv[1])]
         mode = ['body', 'bodyhand'][int(argv[2])]
         dataset = ['bbc', 'spbsl'][int(argv[3])]
         server = [False, True][int(argv[4])]
-        Test(Code, init, mode, dataset, server)
         print(Code, init, mode, dataset, server)
-
-
-    
-
-
-    Test(3, init=True, mode='bodyhand')
-    # Test(2, init=True, mode='bodyhand')
+        if init is False:
+            time.sleep(20)
+        Test(Code, init, mode, dataset, server)
+        
