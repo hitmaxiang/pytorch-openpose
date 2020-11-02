@@ -134,7 +134,9 @@ def MotionData_every_frame(oriImg, mode='body', display=False):
     author: mario
     '''
     # first to estimate the body info
+    begin_time = time.time()
     candidate, subset = body_estimation(oriImg)
+    print('each const time %f seconds' % (time.time()-begin_time))
     PoseMat = np.zeros((60, 3))
 
     # find the most right person in the screen
@@ -509,4 +511,5 @@ if __name__ == "__main__":
         if init is False:
             time.sleep(20)
         Test(Code, init, mode, dataset, server)
-        
+    else:
+        Test(1, server=True)

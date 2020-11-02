@@ -115,24 +115,20 @@ class Batch_body():
         begin_time = time.time()
         
         with torch.no_grad():
-            torch.cuda.empty_cache()
             b_heatmap = F.interpolate(Mconv7_stage6_L2, scale_factor=self.stride, mode='bicubic')
             b_heatmap = b_heatmap[:, :, :n_h, :n_w]
             b_heatmap = F.interpolate(b_heatmap, size=(h, w), mode='bicubic')
-            b_heatmap = b_heatmap.cpu().numpy()
-            torch.cuda.empty_cache()
+
             b_paf = F.interpolate(Mconv7_stage6_L1, scale_factor=self.stride, mode='bicubic')
-            
             b_paf = b_paf[:, :, :n_h, :n_w]
-            torch.cuda.empty_cache()
             b_paf = F.interpolate(b_paf, size=(h, w), mode='bicubic')
-            torch.cuda.empty_cache()
+
+        if torch.cuda.is_available():
+            b_heatmap = b_heatmap.cpu().numpy()
             b_paf = b_paf.cpu().numpy()
             torch.cuda.empty_cache()
-
-        # if torch.cuda.is_available():
-        #     b_heatmap = b_heatmap.cpu().numpy()
-        #     b_paf = b_paf.cpu().numpy()
+            b_heatmap = np.transpose(b_heatmap, [0, 2, 3, 1])
+            b_paf = np.transpose(b_paf, [0, 2, 3, 1])
         print('the postprosess cost %f seconds' % (time.time()-begin_time))
 
         # begin_time = time.time()
@@ -171,7 +167,7 @@ class Batch_body():
     def FindBody_frame(self, heatmap, paf):
         all_peaks = []
         peak_counter = 0
-        
+        begin_time = time.time()
         for part in range(18):
             map_ori = heatmap[:, :, part]
             one_heatmap = gaussian_filter(map_ori, sigma=3)
@@ -182,6 +178,9 @@ class Batch_body():
 
             all_peaks.append(peaks_with_score_and_id)
             peak_counter += len(peaks)
+        print('the find-1 cost %f seconds' % (time.time()-begin_time))
+
+        begin_time = time.time()
 
         connection_all = []
         special_k = []
@@ -238,6 +237,9 @@ class Batch_body():
 
         # last number in each row is the total parts number of that person
         # the second last number in each row is the score of the overall configuration
+        print('the find-2 cost %f seconds' % (time.time()-begin_time))
+
+        begin_time = time.time()
         subset = -1 * np.ones((0, 20))
         candidate = np.array([item for sublist in all_peaks for item in sublist])
 
@@ -288,11 +290,11 @@ class Batch_body():
             if subset[i][-1] < 4 or subset[i][-2] / subset[i][-1] < 0.4:
                 deleteIdx.append(i)
         subset = np.delete(subset, deleteIdx, axis=0)
+        print('the find-3 cost %f seconds' % (time.time()-begin_time))
 
         # subset: n*20 array, 0-17 is the index in candidate, 18 is the total score, 19 is the total parts
         # candidate: x, y, score, id
         return candidate, subset
-        print()
 
     def calculate_size_pad(self, g_scale, height, width):
         scale = self.boxsize * g_scale/height
@@ -321,11 +323,10 @@ def Show_images(batch_images, windowname='video'):
 
 def Show_Bodys(batch_images, results):
     batch_images = batch_images * 255
-    batch_images = batch_images.astype(np.uint8)
-    # batch_images = torch.clamp(batch_images, 0, 255)
-    # batch_images = batch_images.numpy().astype(np.uint8)
-    # # batch_images = np.ascontiguousarray(batch_images)
-    # batch_images = np.transpose(batch_images, [0, 2, 3, 1])
+    # batch_images = batch_images.astype(np.uint8)
+    batch_images = torch.clamp(batch_images, 0, 255)
+    batch_images = batch_images.numpy().astype(np.uint8)
+    batch_images = np.transpose(batch_images, [0, 2, 3, 1])
     for i in range(len(batch_images)):
         canvas = deepcopy(batch_images[i])
         canvas = np.ascontiguousarray(canvas)
@@ -338,13 +339,28 @@ def Show_Bodys(batch_images, results):
     return True
 
 
-def Test(testcode):
+def Test(testcode, dataset='spbsl', server=True):
     body_pth = '../model/body_pose_model.pth'
     hand_pth = '../model/hand_pose_model.pth'
     
-    videofolder = '/home/mario/sda/signdata/Scottish parliament/bsl-cls/normal'
-    Recpoint = [(700, 100), (1280, 720)]
-    Batch_Size = 16
+    if dataset == 'spbsl':
+        if server is False:
+            videofolder = '/home/mario/sda/signdata/Scottish parliament/bsl-cls/normal'
+        else:
+            videofolder = '/home/mario/signdata/spbsl/normal'
+
+        datadir = '../data/spbsl'
+        Recpoint = [(700, 100), (1280, 720)]
+
+    elif dataset == 'bbc':
+        if server is False:
+            videofolder = '/home/mario/sda/signdata/bbcpose'
+        else:
+            videofolder = '/home/mario/signdata/bbc'
+        datadir = '../data/bbc'
+        Recpoint = [(350, 100), (700, 400)]
+    
+    Batch_Size = 32
     filenames = os.listdir(videofolder)
     filenames.sort()
 
