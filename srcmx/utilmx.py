@@ -10,6 +10,7 @@ import os
 import re
 import cv2
 import matplotlib
+import scipy
 import numpy as np
 from tslearn import metrics
 from scipy.io import loadmat
@@ -231,6 +232,50 @@ def FindPeaks_2d(data, thre):
         (data >= map_left, data >= map_right, data >= map_up, data >= map_down, data > thre))
     peaks_index = list(zip(np.nonzero(peaks_binary)[1], np.nonzero(peaks_binary)[0]))  # note reverse 
     return peaks_index
+
+
+# @jit
+def FindPeaks(data, thre):
+    map_left = np.zeros(data.shape)
+    map_left[1:, :] = data[:-1, :]
+    map_right = np.zeros(data.shape)
+    map_right[:-1, :] = data[1:, :]
+    map_up = np.zeros(data.shape)
+    map_up[:, 1:] = data[:, :-1]
+    map_down = np.zeros(data.shape)
+    map_down[:, :-1] = data[:, 1:]
+
+    peaks_binary = np.logical_and.reduce(
+        (data >= map_left, data >= map_right, data >= map_up, data >= map_down, data > thre))
+    cordi = np.nonzero(peaks_binary)
+    # peaks_index = list(zip(z[0], z[1], z[2]))  # note reverse 
+    cordi = np.array(cordi).T
+    if cordi.shape[-1] == 3:
+        cordi = list(cordi)
+        cordi.sort(key=lambda cor: cor[-1])
+        counters = 0
+        records = [[] for i in range(data.shape[-1])]
+        for y, x, c in cordi:
+            records[c].append((x, y, data[y, x, c], counters))
+            counters += 1
+        return records
+    return cordi[:, ::-1]
+
+
+def FindPeaks_2d_scipy(data, thre):
+    data[data < thre] = 0
+    labels, nums = scipy.ndimage.label(data)
+    peak_slices = scipy.ndimage.find_objects(labels)
+    centroids = []
+    for peak_slice in peak_slices:
+        dy, dx = peak_slice
+        x, y = dx.start, dy.start
+        slice_data = data[peak_slice]
+        index = np.argmax(slice_data)
+        cx, cy = index//slice_data.shape[1], index % slice_data.shape[1]
+        # cx, cy = centroidnp(data[peak_slice])
+        centroids.append((x+cx, y+cy))
+    return centroids
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ import numpy as np
 import torch.nn.functional as F
 import torchvision.transforms.functional as TTF
 
+from numba import jit
 import utilmx
 
 from copy import deepcopy
@@ -82,39 +83,21 @@ class Batch_body():
 
         batch_size, c, h, w = batch_images.size()
         scale, n_h, n_w, pad_h, pad_w = self.calculate_size_pad(self.scale_search, h, w)
+
         begin_time = time.time()
 
         if torch.cuda.is_available():
             batch_images = batch_images.cuda()
         with torch.no_grad():
+            # prepare the input data of the model
             batch_images = F.interpolate(batch_images, scale_factor=scale, mode='bicubic')
             batch_images = batch_images - 0.5
             batch_images = F.pad(batch_images, [0, pad_w, 0, pad_h], mode='constant', value=0)
-            print('the preprocess1 cost %f seconds' % (time.time()-begin_time))
-            torch.cuda.empty_cache()
-
-        # begin_time = time.time()
-        # batch_images -= 0.5
-        # batch_size, h, w, c = batch_images.shape
-        # n_h, n_w, pad_h, pad_w = self.calculate_size_pad(self.scale_search, h, w)
-        # test_images = np.zeros((batch_size, n_h+pad_h, n_w+pad_w, c))
-        # for i, image in enumerate(batch_images):
-        #     test_images[i, :n_h, :n_w, :] = cv2.resize(image, (n_w, n_h), interpolation=cv2.INTER_CUBIC)
-        # print('the preprocess1 cost %f seconds' % (time.time()-begin_time))
-        # begin_time = time.time()
-        # test_images = np.transpose(test_images, [0, 3, 1, 2])
-        # test_images = np.ascontiguousarray(test_images)
-        # batch_images = torch.from_numpy(test_images).float()
-        # print('the preprocess2 cost %f seconds' % (time.time()-begin_time))
-
-        if torch.cuda.is_available():
-            batch_images = batch_images.cuda()
-        with torch.no_grad():
+            
+            # estimate with the model
             Mconv7_stage6_L1, Mconv7_stage6_L2 = self.model(batch_images)
-        
-        begin_time = time.time()
-        
-        with torch.no_grad():
+
+            # process the outdata of the model for the following use
             b_heatmap = F.interpolate(Mconv7_stage6_L2, scale_factor=self.stride, mode='bicubic')
             b_heatmap = b_heatmap[:, :, :n_h, :n_w]
             b_heatmap = F.interpolate(b_heatmap, size=(h, w), mode='bicubic')
@@ -123,38 +106,16 @@ class Batch_body():
             b_paf = b_paf[:, :, :n_h, :n_w]
             b_paf = F.interpolate(b_paf, size=(h, w), mode='bicubic')
 
-        if torch.cuda.is_available():
+            # move the data from the cuda to cpu 
             b_heatmap = b_heatmap.cpu().numpy()
             b_paf = b_paf.cpu().numpy()
             torch.cuda.empty_cache()
-            b_heatmap = np.transpose(b_heatmap, [0, 2, 3, 1])
-            b_paf = np.transpose(b_paf, [0, 2, 3, 1])
-        print('the postprosess cost %f seconds' % (time.time()-begin_time))
-
-        # begin_time = time.time()
-
-        # Mconv7_stage6_L1 = Mconv7_stage6_L1.cpu().numpy()
-        # Mconv7_stage6_L2 = Mconv7_stage6_L2.cpu().numpy()
-        # Mconv7_stage6_L1 = np.transpose(Mconv7_stage6_L1, [0, 2, 3, 1])
-        # Mconv7_stage6_L2 = np.transpose(Mconv7_stage6_L2, [0, 2, 3, 1])
-
-        # b_heatmap = np.zeros((batch_size, h, w, 19))
-        # for i, data in enumerate(Mconv7_stage6_L2):
-        #     temp = cv2.resize(Mconv7_stage6_L2[i], (0, 0), fx=self.stride, fy=self.stride, interpolation=cv2.INTER_CUBIC)
-        #     temp = temp[:n_h, :n_w, :]
-        #     # self.tempmarix[:, :, :19] = cv2.resize(Mconv7_stage6_L2[i], (0, 0), fx=self.stride, fy=self.stride, interpolation=cv2.INTER_CUBIC)
-        #     b_heatmap[i] = cv2.resize(temp, (w, h), interpolation=cv2.INTER_CUBIC)
-
-        # print('the postprosess2 cost %f seconds' % (time.time()-begin_time))
-        # begin_time = time.time()
-        # b_paf = np.zeros((batch_size, h, w, 38))
-        # for i, data in enumerate(Mconv7_stage6_L1):
-        #     temp = cv2.resize(Mconv7_stage6_L1[i], (0, 0), fx=self.stride, fy=self.stride, interpolation=cv2.INTER_CUBIC)
-        #     temp = temp[:-pad_h-1, :-pad_w-1, :]
-        #     b_paf[i] = cv2.resize(temp, (w, h), interpolation=cv2.INTER_CUBIC)
-
         
-        # print('the postprosess2 cost %f seconds' % (time.time()-begin_time))
+        # rearrange the axises of the data
+        b_heatmap = np.transpose(b_heatmap, [0, 2, 3, 1])
+        b_paf = np.transpose(b_paf, [0, 2, 3, 1])
+
+        print('the data --> model --> cost %f seconds' % (time.time()-begin_time))
 
         begin_time = time.time()
         results = []
@@ -167,21 +128,22 @@ class Batch_body():
     def FindBody_frame(self, heatmap, paf):
         all_peaks = []
         peak_counter = 0
-        begin_time = time.time()
+        # begin_time = time.time()
+        # heatmap_gf = gaussian_filter(heatmap, sigma=[3, 3, 0])
+        heatmap_gf = cv2.GaussianBlur(heatmap, ksize=(0, 0), sigmaX=3, sigmaY=3)
         for part in range(18):
             map_ori = heatmap[:, :, part]
-            one_heatmap = gaussian_filter(map_ori, sigma=3)
-            peaks = utilmx.FindPeaks_2d(one_heatmap, self.thre1)
-            peaks_with_score = [x + (map_ori[x[1], x[0]],) for x in peaks]
+            one_heatmap = deepcopy(heatmap_gf[:, :, part])
+            peaks = utilmx.FindPeaks_2d_scipy(one_heatmap, self.thre1)
+            # peaks = utilmx.FindPeaks(one_heatmap, self.thre1)
+            # peaks = utilmx.FindPeaks_2d(one_heatmap, self.thre1)
+
+            peaks_with_score = [(x[0], x[1], map_ori[x[1], x[0]],) for x in peaks]
             peak_id = range(peak_counter, peak_counter + len(peaks))
             peaks_with_score_and_id = [peaks_with_score[i] + (peak_id[i],) for i in range(len(peak_id))]
-
             all_peaks.append(peaks_with_score_and_id)
             peak_counter += len(peaks)
-        print('the find-1 cost %f seconds' % (time.time()-begin_time))
-
-        begin_time = time.time()
-
+        
         connection_all = []
         special_k = []
         mid_num = 10
@@ -199,7 +161,6 @@ class Batch_body():
                 for i in range(nA):
                     for j in range(nB):
                         vec = np.subtract(candB[j][:2], candA[i][:2])
-                        # norm = math.sqrt(vec[0] * vec[0] + vec[1] * vec[1])
                         # add a small value to avoid divide error
                         norm = math.sqrt(vec[0] * vec[0] + vec[1] * vec[1]) + 1e-10  
                         vec = np.divide(vec, norm)
@@ -237,9 +198,9 @@ class Batch_body():
 
         # last number in each row is the total parts number of that person
         # the second last number in each row is the score of the overall configuration
-        print('the find-2 cost %f seconds' % (time.time()-begin_time))
+        # print('the find-2 cost %f seconds' % (time.time()-begin_time))
 
-        begin_time = time.time()
+        # begin_time = time.time()
         subset = -1 * np.ones((0, 20))
         candidate = np.array([item for sublist in all_peaks for item in sublist])
 
@@ -290,7 +251,7 @@ class Batch_body():
             if subset[i][-1] < 4 or subset[i][-2] / subset[i][-1] < 0.4:
                 deleteIdx.append(i)
         subset = np.delete(subset, deleteIdx, axis=0)
-        print('the find-3 cost %f seconds' % (time.time()-begin_time))
+        # print('the find-3 cost %f seconds' % (time.time()-begin_time))
 
         # subset: n*20 array, 0-17 is the index in candidate, 18 is the total score, 19 is the total parts
         # candidate: x, y, score, id
@@ -360,7 +321,7 @@ def Test(testcode, dataset='spbsl', server=True):
         datadir = '../data/bbc'
         Recpoint = [(350, 100), (700, 400)]
     
-    Batch_Size = 32
+    Batch_Size = 16
     filenames = os.listdir(videofolder)
     filenames.sort()
 
@@ -389,9 +350,9 @@ def Test(testcode, dataset='spbsl', server=True):
                     # batch_images = np.transpose(batch_images, [0, 2, 3, 1])
                     begin_time = time.time()
                     results = bath_body_model(deepcopy(batch_images))
+                    print('each image extraction cost %f seconds\n\n' % ((time.time()-begin_time)/Batch_Size))
                     if not Show_Bodys(batch_images, results):
                         break
-                    print('each image extraction cost %f seconds\n\n' % ((time.time()-begin_time)/Batch_Size))
 
 
 
