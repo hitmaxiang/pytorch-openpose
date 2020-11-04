@@ -10,6 +10,9 @@ import os
 import re
 import cv2
 import matplotlib
+import torch
+from torch import nn
+import torch.nn.functional as F
 import scipy
 import numpy as np
 from tslearn import metrics
@@ -272,10 +275,46 @@ def FindPeaks_2d_scipy(data, thre):
         x, y = dx.start, dy.start
         slice_data = data[peak_slice]
         index = np.argmax(slice_data)
-        cx, cy = index//slice_data.shape[1], index % slice_data.shape[1]
+        cy, cx = (index+1)//slice_data.shape[1], index % slice_data.shape[1]
         # cx, cy = centroidnp(data[peak_slice])
         centroids.append((x+cx, y+cy))
     return centroids
+
+
+def findpeaks_torch(data, thre):
+    # data = torch.from_numpy(data)
+    # if torch.cuda.is_available():
+    #     data = data.cuda()
+    
+    with torch.no_grad():
+        peaks_binary = data > thre
+        torch.logical_and(peaks_binary, data >= F.pad(data, (1, 0))[:, :, :, :-1], out=peaks_binary)
+        torch.logical_and(peaks_binary, data >= F.pad(data, (0, 1))[:, :, :, 1:], out=peaks_binary)
+        torch.logical_and(peaks_binary, data >= F.pad(data, (0, 0, 1, 0))[:, :, :-1, :], out=peaks_binary)
+        torch.logical_and(peaks_binary, data >= F.pad(data, (0, 0, 0, 1))[:, :, 1:, :], out=peaks_binary)
+        peaks_binary = torch.nonzero(peaks_binary, as_tuple=False)
+        # peaks_binary = peaks_binary.cpu().numpy()
+    
+    return peaks_binary
+
+class GaussianBlurConv(nn.Module):
+    def __init__(self, channels=3):
+        super(GaussianBlurConv, self).__init__()
+        self.channels = channels
+        # print("channels: ", channels.shape)
+        kernel = [[0.00078633, 0.00655965, 0.01330373, 0.00655965, 0.00078633],
+                  [0.00655965, 0.05472157, 0.11098164, 0.05472157, 0.00655965],
+                  [0.01330373, 0.11098164, 0.22508352, 0.11098164, 0.01330373],
+                  [0.00655965, 0.05472157, 0.11098164, 0.05472157, 0.00655965],
+                  [0.00078633, 0.00655965, 0.01330373, 0.00655965, 0.00078633]]
+
+        kernel = torch.FloatTensor(kernel).unsqueeze(0).unsqueeze(0)    # (H, W) -> (1, 1, H, W)
+        kernel = kernel.expand((int(channels), 1, 5, 5))
+        self.weight = nn.Parameter(data=kernel, requires_grad=False)
+
+    def __call__(self, x):
+        x = F.conv1d(F.pad(x, (2, 2, 2, 2), mode='reflect'), self.weight, groups=self.channels)
+        return x
 
 
 if __name__ == "__main__":

@@ -4,10 +4,9 @@ Version: 2.0
 Autor: mario
 Date: 2020-11-03 17:48:10
 LastEditors: mario
-LastEditTime: 2020-11-03 22:14:27
+LastEditTime: 2020-11-04 16:19:14
 '''
 import numpy as np
-# from findpeaks import findpeaks
 import matplotlib.pyplot as plt
 import random
 import time
@@ -15,6 +14,9 @@ import scipy
 from scipy.ndimage.filters import gaussian_filter
 from copy import deepcopy
 from numba import jit
+import torch
+import torch.nn.functional as F
+
 
 def FindPeaks_2d(data, thre):
     # assert len(data.shape) == 2
@@ -40,6 +42,24 @@ def FindPeaks_2d(data, thre):
     return cordi
 
 
+def findpeaks_torch(data, thre):
+    # data = torch.from_numpy(data)
+    # if torch.cuda.is_available():
+    #     data = data.cuda()
+    
+    with torch.no_grad():
+        peaks_binary = data > thre
+        torch.logical_and(peaks_binary, data >= F.pad(data, (1, 0))[:, :, :, :-1], out=peaks_binary)
+        torch.logical_and(peaks_binary, data >= F.pad(data, (0, 1))[:, :, :, 1:], out=peaks_binary)
+        torch.logical_and(peaks_binary, data >= F.pad(data, (0, 0, 1, 0))[:, :, :-1, :], out=peaks_binary)
+        torch.logical_and(peaks_binary, data >= F.pad(data, (0, 0, 0, 1))[:, :, 1:, :], out=peaks_binary)
+        peaks_binary = torch.nonzero(peaks_binary, as_tuple=False)
+        # peaks_binary = peaks_binary.cpu().numpy()
+    
+    return peaks_binary
+
+
+
 # @jit
 def centroidnp(data):
     h, w = data.shape
@@ -61,18 +81,22 @@ def peaklables(data, thre):
     for peak_slice in peak_slices:
         dy, dx = peak_slice
         x, y = dx.start, dy.start
-        cx, cy = centroidnp(data[peak_slice])
+        slice_data = data[peak_slice]
+        index = np.argmax(slice_data)
+        cx, cy = index//slice_data.shape[1], index % slice_data.shape[1]
+        # cx, cy = centroidnp(data[peak_slice])
         centroids.append((x+cx, y+cy))
     return centroids
     
 
 def Test(Code):
 
-    Image = np.zeros((620, 580, 19))
+    Image = np.zeros((620, 580, 18), dtype='float32')
+    thre = 0.001
 
     Points = []
     for c in range(Image.shape[-1]):
-        for x in range(2):
+        for x in range(1):
             x = random.randint(0, 579)
             y = random.randint(0, 619)
             Image[y, x, c] = 1
@@ -83,17 +107,29 @@ def Test(Code):
 
     Iters = 16
 
-    begin_time = time.time()
-
     if Code == 0:
+
+        begin_time = time.time()
+
         for i in range(Iters):
             peaks = FindPeaks_2d(Image, 0.0001)
+        print('the find cost %f seconds' % ((time.time()-begin_time)))
+        
+        # print(peaks)
+
     elif Code == 1:
+        begin_time = time.time()
+
         for i in range(Iters):
             for j in range(Image.shape[-1]):
                 temp = deepcopy(Image[:, :, j])
                 peaks = FindPeaks_2d(temp, 0)
+
+        print('the find cost %f seconds' % ((time.time()-begin_time)))
+
     elif Code == 2:
+        begin_time = time.time() 
+
         for i in range(Iters):
             records = [[] for x in range(Image.shape[-1])]
             for j in range(Image.shape[-1]):
@@ -103,17 +139,25 @@ def Test(Code):
                 peaks = peaklables(temp, 0.001)
                 records[j].append(peaks)
 
-    # for j in range(Iters):
-    #     peaks = FindPeaks_2d(Image, 0.0001)
+        print('the find cost %f seconds' % ((time.time()-begin_time)))
 
-    print('the find cost %f seconds' % ((time.time()-begin_time)))
+    elif Code == 3:
+        Image = np.transpose(Image, [2, 0, 1])
+        # Image = np.expand_dims(Image, axis=0)
+        Image = np.tile(Image, (Iters, 1, 1, 1))
+        Image = torch.from_numpy(Image)
+        if torch.cuda.is_available():
+            Image = Image.cuda()
+        torch.cuda.empty_cache()
+        begin_time = time.time()
+        peaks = findpeaks_torch(Image, thre)
+        # for i in range(Iters):
+        #     # Image = np.transpose(Image, [2, 0, 1])
+        #     peaks = findpeaks_torch(Image, thre)
+        print('the find cost %f seconds' % ((time.time()-begin_time)))
 
-    # print(Points)
-    # print(peaks)
-    # plt.matshow(Image)
-    # plt.show()
 
 if __name__ == "__main__":
-    for i in range(3):
+    for i in range(4):
         Test(i)
-    # Test(2)
+    # Test(3)

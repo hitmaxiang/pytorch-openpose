@@ -78,13 +78,17 @@ class Batch_body():
         self.mapIdx = [[31, 32], [39, 40], [33, 34], [35, 36], [41, 42], [43, 44], [19, 20], [21, 22],
                        [23, 24], [25, 26], [27, 28], [29, 30], [47, 48], [49, 50], [53, 54], [51, 52],
                        [55, 56], [37, 38], [45, 46]]
+        
+        self.guassian_filter_conv = utilmx.GaussianBlurConv(19)
+        if torch.cuda.is_available():
+            self.guassian_filter_conv.cuda()
     
     def __call__(self, batch_images):
 
         batch_size, c, h, w = batch_images.size()
         scale, n_h, n_w, pad_h, pad_w = self.calculate_size_pad(self.scale_search, h, w)
 
-        begin_time = time.time()
+        # begin_time = time.time()
 
         if torch.cuda.is_available():
             batch_images = batch_images.cuda()
@@ -95,42 +99,61 @@ class Batch_body():
             batch_images = F.pad(batch_images, [0, pad_w, 0, pad_h], mode='constant', value=0)
             
             # estimate with the model
-            Mconv7_stage6_L1, Mconv7_stage6_L2 = self.model(batch_images)
+            # Mconv7_stage6_L1, Mconv7_stage6_L2 = self.model(batch_images)
+            b_paf, b_heatmap = self.model(batch_images)
 
             # process the outdata of the model for the following use
-            b_heatmap = F.interpolate(Mconv7_stage6_L2, scale_factor=self.stride, mode='bicubic')
+            b_heatmap = F.interpolate(b_heatmap, scale_factor=self.stride, mode='bicubic')
             b_heatmap = b_heatmap[:, :, :n_h, :n_w]
             b_heatmap = F.interpolate(b_heatmap, size=(h, w), mode='bicubic')
 
-            b_paf = F.interpolate(Mconv7_stage6_L1, scale_factor=self.stride, mode='bicubic')
+            b_paf = F.interpolate(b_paf, scale_factor=self.stride, mode='bicubic')
             b_paf = b_paf[:, :, :n_h, :n_w]
             b_paf = F.interpolate(b_paf, size=(h, w), mode='bicubic')
 
+            b_heatmap = self.guassian_filter_conv(b_heatmap)
+            torch.cuda.empty_cache()
+            batch_peaks = utilmx.findpeaks_torch(b_heatmap[:, :-1, :, :], self.thre1)  # only need 18 channels
+            torch.cuda.empty_cache()
             # move the data from the cuda to cpu 
             b_heatmap = b_heatmap.cpu().numpy()
             b_paf = b_paf.cpu().numpy()
+            batch_peaks = batch_peaks.cpu().numpy()
             torch.cuda.empty_cache()
         
         # rearrange the axises of the data
         b_heatmap = np.transpose(b_heatmap, [0, 2, 3, 1])
         b_paf = np.transpose(b_paf, [0, 2, 3, 1])
+        
+        all_peaks = [[[] for i in range(18)] for j in range(batch_size)]
+        b_num = None
+        counter = 0
+        for b_i, c_i, h_i, w_i in batch_peaks:
+            if b_i != b_num:
+                b_num = b_i
+                counter = 0
+            else:
+                counter += 1
+            all_peaks[b_i][c_i].append((w_i, h_i, b_heatmap[b_i, h_i, w_i, c_i], counter))
 
-        print('the data --> model --> cost %f seconds' % (time.time()-begin_time))
+        # print('the data --> model --> cost %f seconds' % (time.time()-begin_time))
 
-        begin_time = time.time()
+        # begin_time = time.time()
         results = []
         for batch_id in range(len(b_heatmap)):
-            candidates, subset = self.FindBody_frame(b_heatmap[batch_id], b_paf[batch_id])
+            candidates, subset = self.FindBody_frame(b_heatmap[batch_id], b_paf[batch_id], all_peaks[batch_id])
             results.append((candidates, subset))
-        print('the findprocess cost %f seconds' % (time.time()-begin_time))
+        # print('the findprocess cost %f seconds' % (time.time()-begin_time))
         return results
     
-    def FindBody_frame(self, heatmap, paf):
+    def FindBody_frame(self, heatmap, paf, all_peaks):
+        '''
         all_peaks = []
         peak_counter = 0
         # begin_time = time.time()
         # heatmap_gf = gaussian_filter(heatmap, sigma=[3, 3, 0])
-        heatmap_gf = cv2.GaussianBlur(heatmap, ksize=(0, 0), sigmaX=3, sigmaY=3)
+        # heatmap_gf = cv2.GaussianBlur(heatmap, ksize=(0, 0), sigmaX=3, sigmaY=3)
+        heatmap_gf = heatmap
         for part in range(18):
             map_ori = heatmap[:, :, part]
             one_heatmap = deepcopy(heatmap_gf[:, :, part])
@@ -143,7 +166,7 @@ class Batch_body():
             peaks_with_score_and_id = [peaks_with_score[i] + (peak_id[i],) for i in range(len(peak_id))]
             all_peaks.append(peaks_with_score_and_id)
             peak_counter += len(peaks)
-        
+        '''
         connection_all = []
         special_k = []
         mid_num = 10
@@ -263,7 +286,69 @@ class Batch_body():
         pad_h = (self.stride - (h % self.stride)) % self.stride
         pad_w = (self.stride - (w % self.stride)) % self.stride
         return (scale, h, w, pad_h, pad_w)
-        
+
+
+class Batch_hand():
+    def __init__(self, model_path):
+        self.model = handpose_model()
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+        model_dict = util.transfer(self.model, torch.load(model_path))
+        self.model.load_state_dict(model_dict)
+        self.model.eval()
+
+    def __call__(self, oriImg):
+        scale_search = [0.5, 1.0, 1.5, 2.0]
+        # scale_search = [0.5]
+        boxsize = 368
+        stride = 8
+        padValue = 128
+        thre = 0.03
+        multiplier = [x * boxsize / oriImg.shape[0] for x in scale_search]
+        heatmap_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 22))
+        # paf_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 38))
+
+        for m in range(len(multiplier)):
+            scale = multiplier[m]
+            imageToTest = cv2.resize(oriImg, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            imageToTest_padded, pad = util.padRightDownCorner(imageToTest, stride, padValue)
+            im = np.transpose(np.float32(imageToTest_padded[:, :, :, np.newaxis]), (3, 2, 0, 1)) / 256 - 0.5
+            im = np.ascontiguousarray(im)
+
+            data = torch.from_numpy(im).float()
+            if torch.cuda.is_available():
+                data = data.cuda()
+            # data = data.permute([2, 0, 1]).unsqueeze(0).float()
+            with torch.no_grad():
+                output = self.model(data).cpu().numpy()
+                # output = self.model(data).numpy()q
+
+            # extract outputs, resize, and remove padding
+            heatmap = np.transpose(np.squeeze(output), (1, 2, 0))  # output 1 is heatmaps
+            heatmap = cv2.resize(heatmap, (0, 0), fx=stride, fy=stride, interpolation=cv2.INTER_CUBIC)
+            heatmap = heatmap[:imageToTest_padded.shape[0] - pad[2], :imageToTest_padded.shape[1] - pad[3], :]
+            heatmap = cv2.resize(heatmap, (oriImg.shape[1], oriImg.shape[0]), interpolation=cv2.INTER_CUBIC)
+
+            heatmap_avg += heatmap / len(multiplier)
+
+        all_peaks = []
+        for part in range(21):
+            map_ori = heatmap_avg[:, :, part]
+            one_heatmap = gaussian_filter(map_ori, sigma=3)
+            binary = np.ascontiguousarray(one_heatmap > thre, dtype=np.uint8)
+            # 全部小于阈值
+            if np.sum(binary) == 0:
+                all_peaks.append([0, 0, 0])
+                continue
+            label_img, label_numbers = label(binary, return_num=True, connectivity=binary.ndim)
+            max_index = np.argmax([np.sum(map_ori[label_img == i]) for i in range(1, label_numbers + 1)]) + 1
+            label_img[label_img != max_index] = 0
+            map_ori[label_img == 0] = 0
+
+            y, x = util.npmax(map_ori)
+            all_peaks.append([x, y, np.max(map_ori)])
+        return np.array(all_peaks)
+
 
 def GetVideoDataLoader(videopath, bath_size, recpoint):
     video_dataset = VideoDataset(videopath, crop=recpoint, transform=transforms.ToTensor())
@@ -321,7 +406,7 @@ def Test(testcode, dataset='spbsl', server=True):
         datadir = '../data/bbc'
         Recpoint = [(350, 100), (700, 400)]
     
-    Batch_Size = 16
+    Batch_Size = 32
     filenames = os.listdir(videofolder)
     filenames.sort()
 
