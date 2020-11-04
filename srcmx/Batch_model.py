@@ -349,6 +349,13 @@ class Batch_hand():
             all_peaks.append([x, y, np.max(map_ori)])
         return np.array(all_peaks)
 
+    def calculate_size_pad(self, g_scale, height, width):
+        scale = self.boxsize * g_scale/height
+        h, w = int(height*scale), int(width*scale)
+        pad_h = (self.stride - (h % self.stride)) % self.stride
+        pad_w = (self.stride - (w % self.stride)) % self.stride
+        return (scale, h, w, pad_h, pad_w)
+
 
 def GetVideoDataLoader(videopath, bath_size, recpoint):
     video_dataset = VideoDataset(videopath, crop=recpoint, transform=transforms.ToTensor())
@@ -384,7 +391,7 @@ def Show_Bodys(batch_images, results):
             return False
     return True
 
-
+    
 def Test(testcode, dataset='spbsl', server=True):
     body_pth = '../model/body_pose_model.pth'
     hand_pth = '../model/hand_pose_model.pth'
@@ -406,7 +413,7 @@ def Test(testcode, dataset='spbsl', server=True):
         datadir = '../data/bbc'
         Recpoint = [(350, 100), (700, 400)]
     
-    Batch_Size = 32
+    Batch_Size = 16
     filenames = os.listdir(videofolder)
     filenames.sort()
 
@@ -438,10 +445,79 @@ def Test(testcode, dataset='spbsl', server=True):
                     print('each image extraction cost %f seconds\n\n' % ((time.time()-begin_time)/Batch_Size))
                     if not Show_Bodys(batch_images, results):
                         break
+    elif testcode == 2:
+        print('test the batch hand')
+        bath_body_model = Batch_body(body_pth)
+        batch_hand_model = Batch_hand(hand_pth)
+        for filename in filenames:
+            _, ext = os.path.splitext(filename)
+            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
+                videopath = os.path.join(videofolder, filename)
+                video_dataloader = GetVideoDataLoader(videopath, Batch_Size, Recpoint)
+                for i, batch_images in enumerate(video_dataloader):
+                    begin_time = time.time()
+                    results = bath_body_model(deepcopy(batch_images))
+                    print('each image extraction cost %f seconds\n\n' % ((time.time()-begin_time)/Batch_Size))
+
+                    images = deepcopy(batch_images)
+                    images *= 255
+                    images = torch.clamp(images, 0, 255)
+                    images = images.numpy().astype(np.uint8)
+                    images = np.transpose(images, [0, 2, 3, 1])
+
+                    # # batch_images = batch_images.astype(np.uint8)
+                    # batch_images = torch.clamp(batch_images, 0, 255)
+                    # batch_images = batch_images.numpy().astype(np.uint8)
+                    # batch_images = np.transpose(batch_images, [0, 2, 3, 1])
+
+                    # # detect the hand
+                    for index, (candidate, subset) in enumerate(results):
+                        oriImg = images[index]
+                        begin_time = time.time()
+                        # oriImg = deepcopy(batch_images[index])
+                    #     oriImg = np.ascontiguousarray(oriImg)
+                    #     # find the most right person in the screen
+                        maxindex = None
+                        if len(subset) >= 1:
+                            leftshoulderX = np.zeros((len(subset),))
+                            for person in range(len(subset)):
+                                index = int(subset[person][5])
+                                leftshoulderX[person] = candidate[index][0]
+                            maxindex = np.argmax(leftshoulderX)
+                        
+                        # clear the other person data
+                        for i in range(len(subset)):
+                            if i != maxindex:
+                                subset[i, :] = -1
+                        
+                        hands_list = utilmx.handDetect(candidate, subset, oriImg.shape[:2])
+
+                        all_hand_peaks = []
+                        for x, y, w, is_left in hands_list:
+                            if not is_left:
+                                peaks = batch_hand_model(oriImg[y:y+w, x:x+w, :])
+                                peaks[:, 0] = np.where(peaks[:, 0] == 0, peaks[:, 0], peaks[:, 0]+x)
+                                peaks[:, 1] = np.where(peaks[:, 1] == 0, peaks[:, 1], peaks[:, 1]+y)
+                                # PoseMat[39:39+21, :] = peaks
+                            else:
+                                peaks = batch_hand_model(cv2.flip(oriImg[y:y+w, x:x+w, :], 1))
+                                peaks[:, 0] = np.where(peaks[:, 0] == 0, peaks[:, 0], w-peaks[:, 0]-1+x)
+                                peaks[:, 1] = np.where(peaks[:, 1] == 0, peaks[:, 1], peaks[:, 1]+y)
+                                # PoseMat[18:18+21, :] = peaks
+                            all_hand_peaks.append(peaks[:, 0:2])
+
+                        # print('each image extraction cost %f seconds\n\n' % ((time.time()-begin_time)))
+                        # canvas = deepcopy(oriImg)
+                        canvas = np.ascontiguousarray(oriImg)
+                        canvas = util.draw_bodypose(canvas, candidate, subset)
+                        canvas = utilmx.draw_handpose_by_opencv(canvas, all_hand_peaks)
+                        cv2.imshow('bodyhand', canvas)
+                        cv2.waitKey(5)
+    
 
 
 
 if __name__ == "__main__":
-    Test(1)
+    Test(2)
     
 
