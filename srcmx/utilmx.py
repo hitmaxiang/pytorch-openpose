@@ -192,7 +192,7 @@ class Records_Read_Write():
             datafiles = os.listdir(datadir)
             with open(os.path.join(datadir, 'extract_ed_ing.txt'), 'w') as f:
                 for datafile in datafiles:
-                    if os.path.splitext(datafile)[1] in ['.npy', 'pkl']:
+                    if os.path.splitext(datafile)[1] in ['.npy', '.pkl']:
                         f.write('%s\n' % datafile)
                         filelists.append(datafile)
         return filelists

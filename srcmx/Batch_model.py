@@ -101,6 +101,8 @@ class Batch_body():
             # estimate with the model
             # Mconv7_stage6_L1, Mconv7_stage6_L2 = self.model(batch_images)
             b_paf, b_heatmap = self.model(batch_images)
+            del batch_images
+            torch.cuda.empty_cache()
 
             # process the outdata of the model for the following use
             b_heatmap = F.interpolate(b_heatmap, scale_factor=self.stride, mode='bicubic')
@@ -110,14 +112,17 @@ class Batch_body():
             b_paf = F.interpolate(b_paf, scale_factor=self.stride, mode='bicubic')
             b_paf = b_paf[:, :, :n_h, :n_w]
             b_paf = F.interpolate(b_paf, size=(h, w), mode='bicubic')
+            b_paf = b_paf.cpu().numpy()
+            torch.cuda.empty_cache()
 
             b_heatmap = self.guassian_filter_conv(b_heatmap)
             torch.cuda.empty_cache()
+
             batch_peaks = utilmx.findpeaks_torch(b_heatmap[:, :-1, :, :], self.thre1)  # only need 18 channels
             torch.cuda.empty_cache()
+
             # move the data from the cuda to cpu 
             b_heatmap = b_heatmap.cpu().numpy()
-            b_paf = b_paf.cpu().numpy()
             batch_peaks = batch_peaks.cpu().numpy()
             torch.cuda.empty_cache()
         
@@ -401,7 +406,6 @@ def Test(testcode, dataset='spbsl', server=True):
             videofolder = '/home/mario/sda/signdata/Scottish parliament/bsl-cls/normal'
         else:
             videofolder = '/home/mario/signdata/spbsl/normal'
-
         datadir = '../data/spbsl'
         Recpoint = [(700, 100), (1280, 720)]
 

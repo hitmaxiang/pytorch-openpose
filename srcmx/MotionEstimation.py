@@ -512,4 +512,4 @@ if __name__ == "__main__":
             time.sleep(20)
         Test(Code, init, mode, dataset, server)
     else:
-        Test(1, mode='bodyhand', server=True)
+        Test(3, mode='body', server=True)
