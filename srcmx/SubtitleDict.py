@@ -51,9 +51,9 @@ class SubtitleDict():
             self.subtitledict = joblib.load(dictfile)
         else:
             print('the .pkl dictfile path is needed')
-        
-        
-        
+
+
+            
     def Construct_from_Mat(self, inputfile, midfile=False):
         '''
         description: extract the mat data into subtitledict
