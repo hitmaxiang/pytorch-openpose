@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-10-20 13:08:44
+LastEditTime: 2020-11-23 21:49:29
 '''
 import os
 import re
@@ -25,129 +25,45 @@ Lancas_Stemmer = LancasterStemmer()
 wordnet_lemmatizer = WordNetLemmatizer()
 
 
-class SubtitleDict():
-    def __init__(self, dictfile, matfile=None, overwrite=False, midfile=False):
-        '''
-        description: initialize the subtitleDict class, when there is no
-        args is giving, there is nothing to do
-        param:
-            dictfile: the filepath of the dict, if it is not exist, the matfile is need to construct
-            matfile: the matlab format file (store the subtitles data)
-            overwrite: whether to overwrite the file
-        return: None 
-        author: mario
-        '''
-
-        # get the maximum framcount of the videos
-        self.FrameCounts = self.GetFrameCounts()
-        
-        if (overwrite is True) or (not os.path.exists(dictfile)):
-            if os.path.exists(matfile) and matfile.endswith('mat'):
-                self.subtitledict = self.Construct_from_Mat(matfile, midfile)
-                self.save(dictfile)
-            else:
-                print('the .mat file is needed')
-        elif os.path.exists(dictfile) and dictfile.endswith('pkl'):
-            self.subtitledict = joblib.load(dictfile)
+class WordsDict():
+    def __init__(self, worddictpath, subdictpath=None, overwrite=False):
+        if (overwrite is True) or (not os.path.exists(worddictpath)):
+            subtitledict = joblib.load(subdictpath)
+            worddict = self.WordDict_Construct(subtitledict)
+            self.worddict = worddict
+            self.save(worddictpath)
+        elif os.path.exists(worddictpath):
+            worddict = joblib.load(worddictpath)
+            self.worddict = worddict
         else:
-            print('the .pkl dictfile path is needed')
-        
-        
-        
-    def Construct_from_Mat(self, inputfile, midfile=False):
-        '''
-        description: extract the mat data into subtitledict
-        param: 
-            inputfile: str, the path of the .mat file 
-        return: dict, the subtitledict 
-        author: mario
-        '''
-        # extract the data from the .mat file, the data format in the mat file is:
-        # 1. the data is stored in dict with key = "bbc_subtitles"
-        # 2. the data's format is 1x92 array
-        # 3. every array is [[name], [[[beginframe]],[[endframe]], [subtitles]]
-        subtitledata = []
-        mat = loadmat(inputfile)
-        datas = mat['bbc_subtitles']
+            print('please input the worddictpath or subdictpath')
     
-        for data in datas[0]:
-            videoname = data[0][0]
-            temprecord = [videoname]
-            for record in data[1][0]:
-                beginframe = record[0][0][0]
-                endframe = record[1][0][0]
-                subtile = record[2][0]
-                temprecord.append([beginframe, endframe, subtile])
-            subtitledata.append(temprecord)
-        
-        # using the subtitledata and engdict to construct subtitledict
-        SubtitleDict = self.construct_subtiles_dict(subtitledata, midfile)
+    def WordDict_Construct(self, subtitledict):
+        worddict = {}
+        for key in subtitledict.keys():
+            subdata = subtitledict[key]
+            avgframe = self.GetAvgFrames(subdata)
+            for index, data in enumerate(subdata):
+                i = 1
+                while index - i >= 0:
+                    if data[0] - subdata[index-i][0] > 0.3 * avgframe * len(data[2].split()):
+                        break
+                    i += 1
+                exbegin = subdata[max(index-i, 0)][0]
+                j = 1
+                while index + j < len(subdata):
+                    if subdata[index+j][1] - data[1] > avgframe * len(data[2].split()):
+                        break
+                    j += 1
+                exend = subdata[min(len(subdata)-1, index+j)][1]
 
-        # whether to save the midfile
-        if midfile:
-            # save the data of subtitledata in file
-            with open('../midfile/matfile.mid', 'w') as f:
-                for index, video in enumerate(subtitledata):
-                    videoname = video[0]
-                    f.write('\n\n\n===== e%d.avi ----- %s  ===\n' % (index+1, videoname))
-                    videodata = video[1:]
-                    for record in videodata:
-                        f.write('%d\t%d\t%s\n' % (record[0], record[1], record[2]))
-
-        return SubtitleDict
-    
-    def construct_subtiles_dict(self, subtitledata, midfile=False):
-        '''
-        description: split the words in subtitledata, and store every unique word
-            (Remove grammatical tenses and singular and plural changes) in dict with 
-            their positions [video, beginframe, endframe]
-        param:
-            subtitieldata: the subtitlelist extract from mat file
-        return: 
-            the subtitledictionaty
-        author: mario
-        '''
-
-        # used to store the words that can't query in the dictionary
-        SubtitleDict = {}
-        for index, video in enumerate(subtitledata):
-            # ignore the video without subtitles
-            if len(video) == 1:
-                continue
-            videodata = video[1:]
-            for jndex, record in enumerate(videodata):
-                frame_diff = record[1] - record[0]
-                exbegin, exend = record[0], record[1]
-
-                # when the previous or back subtitlefram is close, it should be also consider 
-                # as the candidate of the words of current subtitle
-                if jndex >= 1:
-                    # if videodata[jndex-1][1] + frame_diff > record[0]:
-                    exbegin = videodata[jndex-1][0]
-                    
-                if jndex <= len(videodata)-2:
-                    # if record[1] + frame_diff > videodata[jndex+1][0]:
-                    exend = videodata[jndex+1][1]
-                
-                if exend > self.FrameCounts[index]:
-                    continue
-                
-                # deal with the sentence string
-                words = self.Split_Sentence2words(record[2], mode=3)
+                words = self.Split_Sentence2words(data[2], mode=3)
                 for word in words:
-                    if word in SubtitleDict.keys():
-                        SubtitleDict[word].append([index, exbegin, exend, record[0], record[1]])
+                    if word in worddict.keys():
+                        worddict[word].append([key, exbegin, exend, data[0], data[1], i, j])
                     else:
-                        SubtitleDict[word] = [[index, exbegin, exend, record[0], record[1]]]
-                        
-        if midfile:
-            # save the subtitledict word
-            tempdictlist = sorted(SubtitleDict.items(), key=lambda x: len(x[1]))
-            with open('../midfile/dictfile.mid', 'w', encoding='utf-8') as f:
-                for word in tempdictlist:
-                    f.write('%s\t%d\n' % (word[0], len(word[1])))
-            
-        return SubtitleDict
+                        worddict[word] = [[key, exbegin, exend, data[0], data[1], i, j]]
+        return worddict
     
     # Split sentence to words
     def Split_Sentence2words(self, string, mode=0):
@@ -164,7 +80,7 @@ class SubtitleDict():
         author: mario
         '''
         string = string.lower()
-        pattern = r"\b\w+'?\w*\b"
+        pattern = r"\b\w+[':]?\w*\b"
         tokens = re.findall(pattern, string)
 
         if mode == 0:
@@ -176,7 +92,6 @@ class SubtitleDict():
         elif mode == 3:
             word_tags = [(word, self.get_wordnet_pos(tag)) for word, tag in pos_tag(tokens)]
             words = [wordnet_lemmatizer.lemmatize(word, pos=tag) for word, tag in word_tags]
-        # print(string, '\n', words)
         return words
     
     def get_wordnet_pos(self, treebank_tag):
@@ -194,30 +109,30 @@ class SubtitleDict():
             return wordnet.NOUN
         elif treebank_tag.startswith('R'):
             return wordnet.ADV
-        else:  # the default pos-tag is set to noun
+        else:
+            # the default pos-tag is set to noun
             return wordnet.NOUN
     
     def save(self, outpath):
-        joblib.dump(self.subtitledict, outpath)
+        joblib.dump(self.worddict, outpath)
 
     def ChooseSamples(self, word, extend=True):
         begin_time = time.time()
-        samples = self.subtitledict[word]
+        samples = self.worddict[word]
         neg_samples = []
-        neg_keys = list(self.subtitledict.keys())
+        neg_keys = list(self.worddict.keys())
         # np.random.seed(25)
         while len(neg_samples) < len(samples):
             neg_key = np.random.choice(neg_keys)
             if neg_key == word:
                 continue
-            rindex = np.random.randint(len(self.subtitledict[neg_key])) 
-            neg_sample = self.subtitledict[neg_key][rindex]
+            rindex = np.random.randint(len(self.worddict[neg_key])) 
+            neg_sample = self.worddict[neg_key][rindex]
             Valid = True
 
             # when the endfram is large than the framecount of the video, then it will be ignore
             videoindex, beginindex, endindex = neg_sample[:3]
-            if endindex > self.FrameCounts[videoindex] or (endindex-beginindex) < 40:
-                continue
+
             for pos_sample in samples:
                 if neg_sample[0] == pos_sample[0]:
                     if extend:
@@ -233,17 +148,15 @@ class SubtitleDict():
         print('the %s has %d samples, and consume %f seconds!' % (word, len(samples), time.time()-begin_time))
         return samples, neg_samples
     
-    def GetFrameCounts(self):
-        filepath = '../data/videoframeinfo.txt'
-        FrameCounts = np.zeros((92, ), dtype=np.int32)
-        pattern = r'^e(\d+).avi'
-        with open(filepath) as f:
-            lines = f.readlines()
-        for line in lines:
-            videoindex = int(re.findall(pattern, line)[0])
-            framecount = int(line.split()[2])
-            FrameCounts[videoindex-1] = framecount
-        return FrameCounts
+    def GetAvgFrames(self, subdata):
+        # the subdata has length of M, where M is the subtitle instance numbers
+        # each instance has the format as [begin, end, text]
+        wordcounts = 0
+        framecounts = 0
+        for begin, end, text in subdata:
+            framecounts += (end-begin)
+            wordcounts += len(text.split())
+        return framecounts/wordcounts
 
 
 class AnnotationDict:
@@ -330,19 +243,18 @@ class AnnotationDict:
                     if r_begin > b_index and r_end < e_index:
                         Verifications[index] = 1
         return np.mean(Verifications)
-
-        
+     
 
 def Test(testcode):
-    subtilematpath = '../data/bbc_subtitles.mat'
+    # for the spbsl data
+    subdictpath = '../data/spbsl/SubtitleDict.pkl'
+    worddictpath = '../data/spbsl/WordDict.pkl'
+
     annotationpath = '../data/bbc_sign_annotation.mat'
     # test the subtiledict class
     if testcode == 0:
-        # subdict = SubtitleDict(subtilefile, dictfile, midfile=True)
-        subdictpath = '../data/subtitledict.pkl'
-        subdict = SubtitleDict(dictfile=subdictpath, matfile=subtilematpath,
-                               overwrite=True, midfile=True)
-        subdict.ChooseSamples('snow')
+        cl_worddict = WordsDict(worddictpath, subdictpath, overwrite=False)
+        print(cl_worddict.ChooseSamples('snow'))
     elif testcode == 1:
         anotationdict = AnnotationDict(annotationpath)
 

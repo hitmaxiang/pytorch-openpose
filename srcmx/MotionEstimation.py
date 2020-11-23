@@ -2,6 +2,7 @@ import sys
 sys.path.append('..')
 import cv2
 import os
+import re
 import time
 import joblib
 import utilmx
@@ -215,7 +216,7 @@ def MotionData_every_frame(oriImg, mode='body', display=False):
     return PoseMat
 
 
-def Checkout_motion_data(videopath, datapath, recpoint):
+def Checkout_motion_data(videopath, datapath, recpoint, random=False):
     '''
     description: verify the motiondata's correctness
     param: 
@@ -245,7 +246,17 @@ def Checkout_motion_data(videopath, datapath, recpoint):
         mode = 'body'
 
     index = 0
+    counters = 0
+    Maxiter = 200
     while True:
+        if random:
+            if counters > Maxiter:
+                break
+            index = np.random.randint(count)
+            video.set(cv2.CAP_PROP_POS_FRAMES, index)
+            counters += 1
+            cv2.waitKey(300)
+
         ret, frame = video.read()
         if ret is False:
             break
@@ -293,7 +304,7 @@ def DisplayPose(img, pose, mode='body'):
     return True
         
 
-def CombineMotiondata(datafolder, mode):
+def CombineMotiondata(datafolder, outpath, mode, pattern=r'\d+'):
     '''
     description: conbine the extract data into one dictinary file and save
     param: 
@@ -303,50 +314,63 @@ def CombineMotiondata(datafolder, mode):
     author: mario
     '''
     MotionDataDicVideos = {}
-    for i in range(1, 93):
-        if mode == 'body':
-            filename = 'e%d-bd.npy' % i
-        elif mode == 'bodyhand':
-            filename = 'e%d-hb.npy' % i
-        filepath = os.path.join(datafolder, filename)
-        if os.path.exists(filepath):
-            motiondata = np.load(filepath)
-            Postion = motiondata[:, :, :2].astype(np.int16)
-            Score = motiondata[:, :, -1]
-            key = '%dvideo' % i
-            MotionDataDicVideos[key] = (Postion, Score)
-    joblib.dump(MotionDataDicVideos, '../data/motionsdic.pkl')
-
-
-def Verifypkldata(videodir, pklfilepath):
-    motiondtadic = joblib.load(pklfilepath)
-    for videoindex in range(93):
-        videoname = 'e%d.avi' % videoindex
-        videopath = os.path.join(videodir, videoname)
-        # prepare the video and motiondata
-        if not os.path.exists(videopath):
-            print('the file %s is not exist' % videopath)
+    filesnames = os.listdir(datafolder)
+    for filename in filesnames:
+        _, ext = os.path.splitext(filename)
+        key = re.findall(pattern, filename)
+        if len(key) == 0 or (key[0] in MotionDataDicVideos.keys()):
             continue
-        video = cv2.VideoCapture(videopath)
-        videokey = '%dvideo' % videoindex
-        PoseMat = motiondtadic[videokey][0]  
-        # determine the mode using the shape of data
-        mode = 'bodyhand'
-        if PoseMat.shape[1] == 18:
-            mode = 'body'      
+        key = key[0]
+        if ext in ['.npy', '.pkl']:
+            # load the file
+            filepath = os.path.join(datafolder, filename)
+            if ext == '.npy':
+                data = np.load(filepath)
+            else:
+                data = joblib.load(filepath)
+            
+            if mode == 'body':  # 18 keypoints
+                Postion = data[:, :18, :2].astype(np.int16)
+                Score = data[:, :18, -1].astype(np.float32)
+                MotionDataDicVideos[key] = (Postion, Score)
+            elif mode == 'bodyhand':
+                if data.shape[1] < 60:
+                    continue
+                Postion = data[:, :, :2].astype(np.int16)
+                Score = data[:, :, -1].astype(np.float32)
+    joblib.dump(MotionDataDicVideos, outpath)
 
-        count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        if count != PoseMat.shape[0]:
-            print('the count number is not equal')
-        randframs = np.random.randint(count, size=(1000,))
 
-        Recpoint = gl_RECPOINT
-        for randframe in randframs:
-            video.set(cv2.CAP_PROP_POS_FRAMES, randframe)
-            ret, frame = video.read()
-            img = frame[Recpoint[0][1]:Recpoint[1][1], Recpoint[0][0]:Recpoint[1][0], :]
-            if not DisplayPose(img, PoseMat[randframe, :, :], mode):
-                break
+def Verifypkldata(videodir, pklfilepath, recpoint, pattern):
+    motiondtadic = joblib.load(pklfilepath)
+    videonames = os.listdir(videodir)
+    for videoname in videonames:
+        _, ext = os.path.splitext(videoname)
+        key = re.findall(pattern, videoname)
+        if len(key) == 0 or (key[0] not in motiondtadic.keys()):
+            continue
+        key = key[0]
+        if ext in ['.mp4', '.avi']:
+            videopath = os.path.join(videodir, videoname)
+            video = cv2.VideoCapture(videopath)
+            PoseMat = motiondtadic[key][0]
+
+            mode = 'bodyhand'
+            if PoseMat.shape[1] == 18:
+                mode = 'body'      
+
+            count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+            if count != PoseMat.shape[0]:
+                print('the count number is not equal')
+            randframs = np.random.randint(count, size=(1000,))
+
+            for randframe in randframs:
+                video.set(cv2.CAP_PROP_POS_FRAMES, randframe)
+                ret, frame = video.read()
+                img = frame[recpoint[0][1]:recpoint[1][1], recpoint[0][0]:recpoint[1][0], :]
+                if not DisplayPose(img, PoseMat[randframe, :, :], mode):
+                    break
+                cv2.waitKey(1000)
 
 
 def Demons_SL_video_clip(clipindex, poseclip):
@@ -420,11 +444,12 @@ def Test(Code, init=False, mode='body', dataset='spbsl', server=False):
     # initialize the data source according the input option
     if dataset == 'spbsl':
         if server is False:
-            videofolder = '/home/mario/sda/signdata/Scottish parliament/bsl-cls/normal'
+            videofolder = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
+            datadir = '/home/mario/sda/signdata/SPBSL/scenes/normal/data'
         else:
             videofolder = '/home/mario/signdata/spbsl/normal'
-
-        datadir = '../data/spbsl'
+            datadir = '../data/spbsl'
+        
         Recpoint = [(700, 100), (1280, 720)]
 
     elif dataset == 'bbc':
@@ -486,15 +511,18 @@ def Test(Code, init=False, mode='body', dataset='spbsl', server=False):
                 outpath = os.path.join(datadir, outname)
                 if os.path.isfile(outpath):
                     print(outname)
-                    Checkout_motion_data(filepath, outpath, Recpoint)
-    # combine the motion data files to one file
+                    Checkout_motion_data(filepath, outpath, Recpoint, random=True)
+    
     elif Code == 4:
-        npydatafolder = '/home/mario/sda/signdata/bbcpose_npy'
+        # combine the motion data files to one file
+        # datafolder = '/home/mario/sda/signdata/bbcpose_npy'
         print('testcode4')
+        outpath = '../data/motionsdic.pkl'
+        pattern = r'\d+'
         # CombineMotiondata(npydatafolder, 'body')
-        if not os.path.exists('../data/motionsdic.pkl'):
-            CombineMotiondata(npydatafolder, 'body')
-        Verifypkldata(destfolder, '../data/motionsdic.pkl')
+        if not os.path.exists(outpath):
+            CombineMotiondata(datadir, outpath, mode, pattern=pattern)
+        Verifypkldata(videofolder, outpath, Recpoint, pattern)
 
 
 if __name__ == "__main__":
@@ -512,4 +540,4 @@ if __name__ == "__main__":
             time.sleep(20)
         Test(Code, init, mode, dataset, server)
     else:
-        Test(3, mode='body', server=True)
+        Test(4, mode='body', server=False)
