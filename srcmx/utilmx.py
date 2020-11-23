@@ -315,7 +315,7 @@ class GaussianBlurConv(nn.Module):
         self.weight = nn.Parameter(data=kernel, requires_grad=False)
 
     def __call__(self, x):
-        x = F.conv1d(F.pad(x, (2, 2, 2, 2), mode='reflect'), self.weight, groups=self.channels)
+        x = F.conv2d(F.pad(x, (2, 2, 2, 2), mode='reflect'), self.weight, groups=self.channels)
         return x
 
 
@@ -390,6 +390,9 @@ def handDetect(candidate, subset, img_shape):
     x, y is the coordinate of top left 
     '''
     return detect_result
+
+
+
 
 if __name__ == "__main__":
     Records_Read_Write().Read_shaplets_cls_Records('../data/record.txt')

@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-11-23 21:49:29
+LastEditTime: 2020-11-23 22:19:56
 '''
 import os
 import re
@@ -257,8 +257,6 @@ def Test(testcode):
         print(cl_worddict.ChooseSamples('snow'))
     elif testcode == 1:
         anotationdict = AnnotationDict(annotationpath)
-
-
 
 if __name__ == "__main__":
     Test(0)
