@@ -221,67 +221,6 @@ def draw_handpose_by_opencv(canvas, peaks):
     return canvas
 
 
-def FindPeaks_2d(data, thre):
-    assert len(data.shape) == 2
-    map_left = np.zeros(data.shape)
-    map_left[1:, :] = data[:-1, :]
-    map_right = np.zeros(data.shape)
-    map_right[:-1, :] = data[1:, :]
-    map_up = np.zeros(data.shape)
-    map_up[:, 1:] = data[:, :-1]
-    map_down = np.zeros(data.shape)
-    map_down[:, :-1] = data[:, 1:]
-
-    peaks_binary = np.logical_and.reduce(
-        (data >= map_left, data >= map_right, data >= map_up, data >= map_down, data > thre))
-    peaks_index = list(zip(np.nonzero(peaks_binary)[1], np.nonzero(peaks_binary)[0]))  # note reverse 
-    return peaks_index
-
-
-# @jit
-def FindPeaks(data, thre):
-    map_left = np.zeros(data.shape)
-    map_left[1:, :] = data[:-1, :]
-    map_right = np.zeros(data.shape)
-    map_right[:-1, :] = data[1:, :]
-    map_up = np.zeros(data.shape)
-    map_up[:, 1:] = data[:, :-1]
-    map_down = np.zeros(data.shape)
-    map_down[:, :-1] = data[:, 1:]
-
-    peaks_binary = np.logical_and.reduce(
-        (data >= map_left, data >= map_right, data >= map_up, data >= map_down, data > thre))
-    cordi = np.nonzero(peaks_binary)
-    # peaks_index = list(zip(z[0], z[1], z[2]))  # note reverse 
-    cordi = np.array(cordi).T
-    if cordi.shape[-1] == 3:
-        cordi = list(cordi)
-        cordi.sort(key=lambda cor: cor[-1])
-        counters = 0
-        records = [[] for i in range(data.shape[-1])]
-        for y, x, c in cordi:
-            records[c].append((x, y, data[y, x, c], counters))
-            counters += 1
-        return records
-    return cordi[:, ::-1]
-
-
-def FindPeaks_2d_scipy(data, thre):
-    data[data < thre] = 0
-    labels, nums = scipy.ndimage.label(data)
-    peak_slices = scipy.ndimage.find_objects(labels)
-    centroids = []
-    for peak_slice in peak_slices:
-        dy, dx = peak_slice
-        x, y = dx.start, dy.start
-        slice_data = data[peak_slice]
-        index = np.argmax(slice_data)
-        cy, cx = (index+1)//slice_data.shape[1], index % slice_data.shape[1]
-        # cx, cy = centroidnp(data[peak_slice])
-        centroids.append((x+cx, y+cy))
-    return centroids
-
-
 def findpeaks_torch(data, thre):
     # data = torch.from_numpy(data)
     # if torch.cuda.is_available():
@@ -392,7 +331,60 @@ def handDetect(candidate, subset, img_shape):
     return detect_result
 
 
+def SlidingDistance(pattern, sequence):
+    '''
+    calculate the distance between pattern with all the candidate patterns in sequence
+    the pattern has the shape of (m, d), and sequence has the shape of (n, d). the d is
+    the dimention of the time series date.
+    '''
+    m = len(pattern)
+    n = len(sequence)
+    _len = n - m + 1
+    dist = np.square(pattern[0] - sequence[:_len])
+    dist = dist.astype(np.float32)
+    for i in range(1, m):
+        dist += np.square(pattern[i] - sequence[i:i+_len])
+    if len(dist.shape) == 2:
+        dist = np.sum(dist, axis=-1)
+    return np.sqrt(dist)
+
+
+def matrixprofile(sequenceA, sequenceB, m):
+    l_1 = len(sequenceA)
+    l_2 = len(sequenceB)
+    DisMat = np.zeros((l_1-m+1, l_2-m+1))
+    DisMat[0, :] = SlidingDistance(sequenceA[:m], sequenceB)
+    DisMat[:, 0] = SlidingDistance(sequenceB[:m], sequenceA)
+    for r in range(1, DisMat.shape[0]):
+        offset = np.square(sequenceA[r+m-1]-sequenceB[m:])
+        offset -= np.square(sequenceA[r-1]-sequenceB[:-m])
+        offset = np.sum(offset, axis=-1)
+        DisMat[r, 1:] = np.sqrt(DisMat[r-1, :-1]**2+offset)
+    return DisMat
 
 
 if __name__ == "__main__":
-    Records_Read_Write().Read_shaplets_cls_Records('../data/record.txt')
+    import time
+
+    Testcode = 1
+    if Testcode == 0:
+        Records_Read_Write().Read_shaplets_cls_Records('../data/record.txt')
+    else:
+        A = np.random.rand(10, 3)
+        B = np.random.rand(1000, 3)
+        x = 1000
+        t = time.time()
+
+        for _ in range(x):
+            d1, l1 = Calculate_shapelet_distance(A, B)
+        t1 = time.time()
+
+        for _ in range(x):
+            d2 = SlidingDistance(A, B)
+            l2 = np.argmin(d2)
+            d2 = d2[l2]
+        t2 = time.time()
+
+        print(np.allclose(d1, d2))
+        print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t2 - t1) * 1000.))
+        print('Speedup ', (t1 - t) / (t2 - t1))

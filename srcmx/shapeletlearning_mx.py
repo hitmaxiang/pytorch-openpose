@@ -19,15 +19,18 @@ from tslearn import metrics
 from tslearn.shapelets import LearningShapelets
 from tslearn.preprocessing import TimeSeriesScalerMinMax
 from sklearn.preprocessing import scale
-from SubtitleDict import SubtitleDict, AnnotationDict
+from SubtitleDict import WordsDict, AnnotationDict
 from utilmx import Records_Read_Write
 
 
 class Shapelets_mx():
-    def __init__(self, motion_dictpath, subtitle_dictpath, annotation_dictpath):
+    def __init__(self, motion_dictpath, word_dictpath, annotation_dictpath=None):
         self.motiondatadict = joblib.load(motion_dictpath)
-        self.cls_subtitledict = SubtitleDict(subtitle_dictpath)
-        self.cls_annotationdict = AnnotationDict(annotation_dictpath)
+        self.cls_worddict = WordsDict(word_dictpath)
+        if annotation_dictpath is not None:
+            self.cls_annotationdict = AnnotationDict(annotation_dictpath)
+        else:
+            self.cls_annotationdict = None
     
     def Getsamples(self, word):
         '''
@@ -37,14 +40,13 @@ class Shapelets_mx():
         author: mario
         '''
         # 抽样得到 pos 以及 neg 的样本的索引以及clip位置
-        pos_indexes, neg_indexes = self.cls_subtitledict.ChooseSamples(word)
+        pos_indexes, neg_indexes = self.cls_worddict.ChooseSamples(word)
         samples = []
-        clip_indexes = np.concatenate((pos_indexes, neg_indexes), axis=0)
 
         # 从 motiondict 中 按照上面得到的索引位置提取数据
-        for record in clip_indexes:
-            videoindex, beginindex, endindex = record[:3]
-            videokey = '%dvideo' % (videoindex+1)
+        for record in pos_indexes+neg_indexes:
+            videokey, beginindex, endindex = record[:3]
+            # videokey = '%dvideo' % (videoindex+1)
             if videokey not in self.motiondatadict.keys():
                 continue
             clip_data = self.motiondatadict[videokey][0][beginindex:endindex]
@@ -52,9 +54,9 @@ class Shapelets_mx():
             # 针对每个 clip 数据, 只选取上面身的关节数据作为特征
             clip_data = PD.MotionJointSelect(clip_data, datamode='body', featuremode=0)
             clip_data = np.reshape(clip_data, (clip_data.shape[0], -1))
+            clip_data = clip_data.astype(np.float32)
             samples.append(clip_data)
-            
-        return samples, clip_indexes[:len(pos_indexes), :2]
+        return samples, pos_indexes
     
     def train(self, word=None, method=0):
         if word is None:
@@ -67,7 +69,7 @@ class Shapelets_mx():
         
         for word in words:
             self.word = word
-            samples, pos_indexes = self.Getsamples(word)
+            samples, pos_indexes, = self.Getsamples(word)
             
             for m in range(4, 20):
                 if method == 0:
@@ -161,35 +163,45 @@ class Shapelets_mx():
         best_score = 0
         best_query = None
         best_locs = None
+        N = len(samples)
+        # 使用两级优化的方式进行优化
+        for i in range(len(pos_indexes)):
+            begin_time = time.time()
+            l_1 = len(samples[i])
+            Dis_sample = np.zeros((N, l_1-m_len+1))
+            Dis_loc = np.zeros(Dis_sample.shape, dtype=np.int16)
+            
+            for j in range(N):
+                if i == j:
+                    Dis_sample[i] = 0
+                    Dis_loc[i] = np.arange(Dis_loc.shape[1])
+                    continue
+                DisMat = utilmx.matrixprofile(samples[i], samples[j], m_len)
+                Dis_loc[j] = np.argmin(DisMat, axis=-1)
+                Dis_sample[j] = np.min(DisMat, axis=-1)
+            
+            # 针对每一个可能的 candidate sign, 求解它的score
+            bestscore, bestindex = 0, 0
+            for candin_index in range(l_1-m_len+1):
+                tempscore, thre = self.Bipartition_score(Dis_sample[:,candin_index], len(pos_indexes))
+                if tempscore > bestscore:
+                    bestscore = tempscore
+                    bestindex = candin_index
+            
+            print('each sample cost time %f seconds' % (time.time()-begin_time))
+            print('the bestcore is %f at index %d with length %d' % (bestscore, bestindex, m_len))
+
+        #         tempscore, thre = self.Bipartition_score(temp_record[:, 0], len(pos_indexes))
+        #         if tempscore > best_score:
+        #             best_score = tempscore
+        #             best_query = query
+        #             best_locs = temp_record
         
-        # 从所有的 pos_sample 中提取所有可能的 query 子序列
-        for sample_id in range(len(pos_indexes)):  
-
-            pos_sample = samples[sample_id]
-            for q_index in range(len(pos_sample)-m_len+1):
-
-                query = pos_sample[q_index:q_index+m_len]
-
-                # 使用该 query 对所有样本数据进行距离求取
-                temp_record = np.zeros((len(samples), 3))
-                
-                for sample_id in range(len(samples)):
-                    sample = samples[sample_id]
-                    # path, dis = metrics.dtw_subsequence_path(query, sample)
-                    dis, loc = utilmx.Calculate_shapelet_distance(query, sample)
-                    temp_record[sample_id] = np.array([dis, loc, loc+m_len])
-
-                tempscore, thre = self.Bipartition_score(temp_record[:, 0], len(pos_indexes))
-                if tempscore > best_score:
-                    best_score = tempscore
-                    best_query = query
-                    best_locs = temp_record
-        
-        print('each sample cost time %f seconds' % (time.time()-begin_time))
-        # tempscore, thre = self.Bipartition_score(best_locs[:, 0], len(pos_indexes), display=True)
-        print('\n\n the length with % d and score is %f' % (m_len, tempscore))
-        accuracy = self.RetriveAccuracy(pos_indexes, best_locs[:len(pos_indexes), 1:])
-        print(accuracy)
+        # print('each sample cost time %f seconds' % (time.time()-begin_time))
+        # # tempscore, thre = self.Bipartition_score(best_locs[:, 0], len(pos_indexes), display=True)
+        # print('\n\n the length with % d and score is %f' % (m_len, tempscore))
+        # accuracy = self.RetriveAccuracy(pos_indexes, best_locs[:len(pos_indexes), 1:])
+        # print(accuracy)
 
     def Bipartition_score(self, distances, pos_num, display=False):
         '''
@@ -278,6 +290,7 @@ class Shapelets_mx():
             # verification test the real word is in the candidate clips
             retrieve_accuracy = self.cls_annotationdict.Retrieve_Verification(word, indexes)
             print('the verification of %s is %f\n' % (word, retrieve_accuracy))
+
 
 def Shapelets_Rangelength(pos_indexes, pos_samples, neg_samples, lengthrange):
     '''
@@ -370,7 +383,12 @@ def Test(testcode):
         cls_shapelet.train('work', method=1)
         # cls_shapelet.RetriveAccuracy_with_record_file('snow', '../data/record_server.txt')
         # cls_shapelet.Retrieve_Verification()
+    elif testcode == 2:
+        motionsdictpath = '../data/spbsl/motionsdic.pkl'
+        worddictpath = '../data/spbsl/WordDict.pkl'
+        cls_shapelet = Shapelets_mx(motionsdictpath, worddictpath)
+        cls_shapelet.train('work', method=2)
         
 
 if __name__ == "__main__":
-    Test(1)
+    Test(2)
