@@ -7,18 +7,19 @@ LastEditors: mario
 LastEditTime: 2020-11-02 16:35:50
 '''
 import os
-import math
 import re
+import math
+import bisect
 import cv2
-import matplotlib
 import torch
-from torch import nn
-import torch.nn.functional as F
 import scipy
+import matplotlib
 import numpy as np
+import torch.nn.functional as F
+
+from torch import nn
 from tslearn import metrics
 from scipy.io import loadmat
-from numba import jit
 from sklearn.preprocessing import scale
 
 
@@ -225,7 +226,6 @@ def findpeaks_torch(data, thre):
     # data = torch.from_numpy(data)
     # if torch.cuda.is_available():
     #     data = data.cuda()
-    
     with torch.no_grad():
         peaks_binary = data > thre
         torch.logical_and(peaks_binary, data >= F.pad(data, (1, 0))[:, :, :, :-1], out=peaks_binary)
@@ -363,13 +363,70 @@ def matrixprofile(sequenceA, sequenceB, m):
     return DisMat
 
 
+class BestKItems():
+    # 注意 bisect 只能沿着一个方向（increase）进行排序
+    def __init__(self, K, preferlarge=True):
+        self.capacity = K
+        self.scores = []
+        self.keys = []
+        self.data = {}
+    
+    def insert(self, score, items):
+        index = bisect.bisect_left(self.scores, score)
+        if index == 0:
+            if len(self.scores) >= self.capacity:
+                return
+        self.scores.insert(index, score)
+        self.keys.insert(index, items[0])
+        self.data[items[0]] = items[1]
+
+        if len(self.scores) > self.capacity:
+            rmkey = self.keys[0]
+            self.scores = self.scores[1:]
+            self.keys = self.keys[1:]
+            self.data.pop(rmkey)
+    
+    def clear(self):
+        self.scores = []
+        self.keys = []
+        self.data = {}
+    
+    def wirteinfo(self, header, outpath, mode='a'):
+        with open(outpath, mode) as f:
+            f.write('header:%s\n\n' % header)
+            for i in range(len(self.scores)):
+                f.write('%dth:shapelet\t%s--%f\n' % (i, self.keys[i], self.scores[i]))
+                for loc in self.data[self.keys[i]]:
+                    f.write('\t%d' % loc)
+                f.write('\n\n')
+
+
+def ReadShapeletRecords(inputfile):
+    # params_pattern = r'word:\s*(\w+),.*lenth:\s*(\d+),\s*iters:\s*(\d+),\s*feature:\s*(\d+)'
+    pattern = r'header:the word:(.+) with m length:\s*(\d+)$'
+    record = {}
+    with open(inputfile, 'r') as f:
+        lines = f.readlines()
+    for line in lines:
+        results = re.findall(pattern, line)
+        if len(results) != 0:
+            word = results[0][0]
+            m = results[0][1]
+            # print(word, m)
+            if word in record.keys():
+                record[word].append(int(m))
+            else:
+                record[word] = [int(m)]
+    return record
+
+
 if __name__ == "__main__":
     import time
 
-    Testcode = 1
+    Testcode = 2
     if Testcode == 0:
         Records_Read_Write().Read_shaplets_cls_Records('../data/record.txt')
-    else:
+    elif Testcode == 1:
         A = np.random.rand(10, 3)
         B = np.random.rand(1000, 3)
         x = 1000
@@ -388,3 +445,5 @@ if __name__ == "__main__":
         print(np.allclose(d1, d2))
         print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t2 - t1) * 1000.))
         print('Speedup ', (t1 - t) / (t2 - t1))
+    elif Testcode == 2:
+        ReadShapeletRecords('../data/spbsl/shapeletED.txt')

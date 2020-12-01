@@ -11,22 +11,17 @@ import utilmx
 import joblib
 import tslearn
 import numpy as np
-import tensorflow as tf
 import PreprocessingData as PD
 import matplotlib.pyplot as plt
 from numba import jit
-from tslearn import metrics
-from tslearn.shapelets import LearningShapelets
-from tslearn.preprocessing import TimeSeriesScalerMinMax
-from sklearn.preprocessing import scale
 from SubtitleDict import WordsDict, AnnotationDict
 from utilmx import Records_Read_Write
 
 
 class Shapelets_mx():
-    def __init__(self, motion_dictpath, word_dictpath, annotation_dictpath=None):
+    def __init__(self, motion_dictpath, word_dictpath, subtitle_dictpath, annotation_dictpath=None):
         self.motiondatadict = joblib.load(motion_dictpath)
-        self.cls_worddict = WordsDict(word_dictpath)
+        self.cls_worddict = WordsDict(word_dictpath, subtitle_dictpath)
         if annotation_dictpath is not None:
             self.cls_annotationdict = AnnotationDict(annotation_dictpath)
         else:
@@ -40,13 +35,14 @@ class Shapelets_mx():
         author: mario
         '''
         # 抽样得到 pos 以及 neg 的样本的索引以及clip位置
-        pos_indexes, neg_indexes = self.cls_worddict.ChooseSamples(word)
+        # sample_indexes 的格式为：[videokey(str), begin, end, label]
+        sample_indexes = self.cls_worddict.ChooseSamples(word, 1.5)
         samples = []
 
         # 从 motiondict 中 按照上面得到的索引位置提取数据
-        for record in pos_indexes+neg_indexes:
-            videokey, beginindex, endindex = record[:3]
-            # videokey = '%dvideo' % (videoindex+1)
+        # motiondata format: [motiondatas, scores]
+        for i in range(len(sample_indexes)):
+            videokey, beginindex, endindex = sample_indexes[i][:3]
             if videokey not in self.motiondatadict.keys():
                 continue
             clip_data = self.motiondatadict[videokey][0][beginindex:endindex]
@@ -54,30 +50,36 @@ class Shapelets_mx():
             # 针对每个 clip 数据, 只选取上面身的关节数据作为特征
             clip_data = PD.MotionJointSelect(clip_data, datamode='body', featuremode=0)
             clip_data = np.reshape(clip_data, (clip_data.shape[0], -1))
+            # 因为原始的数据类型为int16， 在后续计算的过程中，容易溢出
             clip_data = clip_data.astype(np.float32)
             samples.append(clip_data)
-        return samples, pos_indexes
+        return samples, sample_indexes
     
-    def train(self, word=None, method=0):
+    def train(self, word=None, method=2):
         if word is None:
-            words = []
-            for keyword in self.cls_annotationdict.keys():
-                if keyword in self.cls_subtitledict.keys():
-                    words.append(keyword)
-        else:
+            words = self.cls_worddict.keys()
+        elif isinstance(word, str):
             words = [word]
+        elif isinstance(word, list):
+            words = word
         
+        trainedrecords = utilmx.ReadShapeletRecords('../data/spbsl/shapeletED.txt')
+
         for word in words:
             self.word = word
-            samples, pos_indexes, = self.Getsamples(word)
+            samples, sample_indexes = self.Getsamples(word)
             
-            for m in range(4, 20):
+            for m in range(4, 30):
+                if word in trainedrecords.keys():
+                    if m in trainedrecords[word]:
+                        continue
                 if method == 0:
-                    self.FindShaplets_dtw_methods(samples, pos_indexes, m)
+                    self.FindShaplets_dtw_methods(samples, sample_indexes, m)
                 elif method == 1:
-                    self.FindShaplets_tslearn_class(samples, pos_indexes, m)
+                    # self.FindShaplets_tslearn_class(samples, pos_indexes, m)
+                    pass
                 elif method == 2:
-                    self.FindShaplets_brute_force_ED(samples, pos_indexes, m)
+                    self.FindShaplets_brute_force_ED(samples, sample_indexes, m)
     
     def FindShaplets_dtw_methods(self, samples, pos_indexes, m_len):
         # 对样本集合进行归一化处理
@@ -111,62 +113,62 @@ class Shapelets_mx():
         accuracy = self.RetriveAccuracy(pos_indexes, best_locs[:len(pos_indexes), 1:])
         print()
     
-    def FindShaplets_tslearn_class(self, samples, pos_indexes, m_len, iters=300):
-        '''
-        description: using the shapelets class from tslearn to learn the shapelet
-        param:
-            samples: the list of samples, each sample with the shape with (n_times, n_dim)
-        return: the shapelet
-        author: mario
-        '''
-        # define the labels of the samples
-        labels = np.zeros((len(samples),))
-        labels[:len(pos_indexes)] = 1
+    # def FindShaplets_tslearn_class(self, samples, pos_indexes, m_len, iters=300):
+    #     '''
+    #     description: using the shapelets class from tslearn to learn the shapelet
+    #     param:
+    #         samples: the list of samples, each sample with the shape with (n_times, n_dim)
+    #     return: the shapelet
+    #     author: mario
+    #     '''
+    #     # define the labels of the samples
+    #     labels = np.zeros((len(samples),))
+    #     labels[:len(pos_indexes)] = 1
 
-        # prepare the samples to satisfy the format demand
-        samples = tslearn.utils.to_time_series_dataset(samples)
-        norm_samples = TimeSeriesScalerMinMax().fit_transform(samples)
-        norm_samples = np.nan_to_num(norm_samples)
+    #     # prepare the samples to satisfy the format demand
+    #     samples = tslearn.utils.to_time_series_dataset(samples)
+    #     norm_samples = TimeSeriesScalerMinMax().fit_transform(samples)
+    #     norm_samples = np.nan_to_num(norm_samples)
 
-        # train and fit the shapelts_from_tslearn model
-        shapelet_sizes = {m_len: 1}
-        shp_clf = LearningShapelets(n_shapelets_per_size=shapelet_sizes,
-                                    optimizer=tf.optimizers.Adam(.01),
-                                    batch_size=16,
-                                    weight_regularizer=0.01,
-                                    max_iter=iters,
-                                    random_state=42,
-                                    verbose=0)
+    #     # train and fit the shapelts_from_tslearn model
+    #     shapelet_sizes = {m_len: 1}
+    #     shp_clf = LearningShapelets(n_shapelets_per_size=shapelet_sizes,
+    #                                 optimizer=tf.optimizers.Adam(.01),
+    #                                 batch_size=16,
+    #                                 weight_regularizer=0.01,
+    #                                 max_iter=iters,
+    #                                 random_state=42,
+    #                                 verbose=0)
             
-        shp_clf.fit(norm_samples, labels)
+    #     shp_clf.fit(norm_samples, labels)
 
-        # predict the samples
-        score = shp_clf.score(norm_samples, labels)
-        locations = shp_clf.locate(norm_samples[:len(pos_indexes)])
+    #     # predict the samples
+    #     score = shp_clf.score(norm_samples, labels)
+    #     locations = shp_clf.locate(norm_samples[:len(pos_indexes)])
         
-        Records_Read_Write().Write_shaplets_cls_Records(filepath='../data/record.txt', 
-                                                        word=self.word,
-                                                        m_len=m_len,
-                                                        iters=iters,
-                                                        featuremode=0,
-                                                        score=score,
-                                                        locs=locations)
-        # self.RetriveAccuracy(pos_indexes, locations)
+    #     Records_Read_Write().Write_shaplets_cls_Records(filepath='../data/record.txt', 
+    #                                                     word=self.word,
+    #                                                     m_len=m_len,
+    #                                                     iters=iters,
+    #                                                     featuremode=0,
+    #                                                     score=score,
+    #                                                     locs=locations)
+    #     # self.RetriveAccuracy(pos_indexes, locations)
     
-    def FindShaplets_brute_force_ED(self, samples, pos_indexes, m_len):
+    def FindShaplets_brute_force_ED(self, samples, sample_indexes, m_len):
         
         begin_time = time.time()
         # 对样本集合进行归一化处理
         # samples = PD.NormlizeData(samples, mode=1)
+        labels = [x[-1] for x in sample_indexes]
 
+        BestKshapelets = utilmx.BestKItems(K=10)
         # 设置最后保留的 shapelet
-        best_score = 0
-        best_query = None
-        best_locs = None
         N = len(samples)
         # 使用两级优化的方式进行优化
-        for i in range(len(pos_indexes)):
-            begin_time = time.time()
+        for i in range(N):
+            if sample_indexes[i][-1] == 0:
+                continue
             l_1 = len(samples[i])
             Dis_sample = np.zeros((N, l_1-m_len+1))
             Dis_loc = np.zeros(Dis_sample.shape, dtype=np.int16)
@@ -181,27 +183,15 @@ class Shapelets_mx():
                 Dis_sample[j] = np.min(DisMat, axis=-1)
             
             # 针对每一个可能的 candidate sign, 求解它的score
-            bestscore, bestindex = 0, 0
             for candin_index in range(l_1-m_len+1):
-                tempscore, thre = self.Bipartition_score(Dis_sample[:,candin_index], len(pos_indexes))
-                if tempscore > bestscore:
-                    bestscore = tempscore
-                    bestindex = candin_index
-            
-            print('each sample cost time %f seconds' % (time.time()-begin_time))
-            print('the bestcore is %f at index %d with length %d' % (bestscore, bestindex, m_len))
-
-        #         tempscore, thre = self.Bipartition_score(temp_record[:, 0], len(pos_indexes))
-        #         if tempscore > best_score:
-        #             best_score = tempscore
-        #             best_query = query
-        #             best_locs = temp_record
+                score, thre = self.Bipartition_score(Dis_sample[:, candin_index], sum(labels))
+                key = '%s-framindex:%d-offset:%d' % (sample_indexes[i][0], sample_indexes[i][1], candin_index)
+                data = Dis_loc[:, candin_index]
+                BestKshapelets.insert(score, [key, data])
         
-        # print('each sample cost time %f seconds' % (time.time()-begin_time))
-        # # tempscore, thre = self.Bipartition_score(best_locs[:, 0], len(pos_indexes), display=True)
-        # print('\n\n the length with % d and score is %f' % (m_len, tempscore))
-        # accuracy = self.RetriveAccuracy(pos_indexes, best_locs[:len(pos_indexes), 1:])
-        # print(accuracy)
+        Headerinfo = 'the word:%s with m length: %d' % (self.word, m_len)
+        BestKshapelets.wirteinfo(Headerinfo, '../data/spbsl/shapeletED.txt', 'a')
+        print('%d samples with %d m_len cost time %f seconds' % (N, m_len, (time.time()-begin_time)))
 
     def Bipartition_score(self, distances, pos_num, display=False):
         '''
@@ -386,8 +376,9 @@ def Test(testcode):
     elif testcode == 2:
         motionsdictpath = '../data/spbsl/motionsdic.pkl'
         worddictpath = '../data/spbsl/WordDict.pkl'
-        cls_shapelet = Shapelets_mx(motionsdictpath, worddictpath)
-        cls_shapelet.train('work', method=2)
+        subtitledictpath = '../data//spbsl/SubtitleDict.pkl'
+        cls_shapelet = Shapelets_mx(motionsdictpath, worddictpath, subtitledictpath)
+        cls_shapelet.train('predict', method=2)
         
 
 if __name__ == "__main__":

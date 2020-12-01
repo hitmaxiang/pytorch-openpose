@@ -1,6 +1,7 @@
 import numpy
 import numpy as np
 import time
+import scipy.fft as fft
 
 
 def sliding_dist(A, B):
@@ -20,6 +21,35 @@ def sd_2(A, B):
     for i in range(1, m):
         dist += numpy.square(A[i] - B[i:-m+i])
     return numpy.sqrt(np.sum(dist, axis=-1))
+
+
+def SlidingDistanceFFT(query, sequence):
+    m = len(query)
+    n = len(sequence)
+    d = sequence.shape[1]
+
+    SS = np.sum(np.square(query))
+    TT = np.sum(np.square(sequence), axis=-1)
+    offset = TT[m:] - TT[:(n-m)]
+    cumoffset = np.cumsum(offset)
+    sum1 = np.sum(TT[:m])
+    J2 = sum1 + cumoffset
+
+    Q = np.zeros((2*n, d))
+    T = np.zeros_like(Q)
+    T[:n] = sequence
+    Q[:m] = np.flip(query, axis=0)
+
+    FT = fft.fft(T, axis=0)
+    FQ = fft.fft(Q, axis=0)
+
+    QT = abs(fft.ifft(FT*FQ, axis=0))
+    QT = np.sum(np.square(QT), axis=-1)[(m-1):n]
+    QT += SS
+
+    QT[0] += sum1
+    QT[1:] += J2
+    return QT
 
 
 def SlidingDistance(pattern, sequence):
@@ -102,16 +132,53 @@ def Test(testcode):
         print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t2 - t1) * 1000.))
         print('Speedup ', (t1 - t) / (t2 - t1))
     elif testcode == 2:
-        from pyts.classification import LearningShapelets
+        A = numpy.random.rand(20, 24)
+        B = numpy.random.rand(500000, 24)
+        x = 10
+        t = time.time()
 
-        X = [[1, 2, 2, 1, 2, 3, 2], [0, 2, 0, 2, 0, 2, 3], [0, 1, 2, 2, 1, 2, 2]]
-        y = [0, 1, 0]
-        clf = LearningShapelets(random_state=42, tol=0.01)
-        clf.fit(X, y)
+        for _ in range(x):
+            d1 = SlidingDistanceFFT(A, B)
+        t1 = time.time()
+
+        for _ in range(x):
+            d2 = SlidingDistance(A, B)
+        t2 = time.time()
+
+        print(numpy.allclose(d1, d2))
+        print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t2 - t1) * 1000.))
+        print('Speedup ', (t1 - t) / (t2 - t1))
+    
+    elif testcode == 3:
+        # prepare the data
+        N = 10
+        datasets = []
+        for i in range(N):
+            L = np.random.randint(250, 300)
+            datasets.append(np.random.rand(L, 24))
+        datasequence = np.concatenate(datasets, axis=0)
+
+        t_0 = time.time()
+        # using the couple-2-couple methods
+        for i in range(N):
+            samples1 = datasets[i]
+            for j in range(N):
+                samples2 = datasets[j]
+                datamat = matrixprofile(samples1, samples2, 10)
+        t_1 = time.time()
+
+        # using the concatenate style
+        # datasequence = np.concatenate(datasets, axis=0)
+        datamats = matrixprofile(datasequence, datasequence, 10)
+        t_2 = time.time()
+
+        print('Orig %0.3f ms, second approach %0.3f ms' % ((t_1 - t_0) * 1000., (t_2 - t_1) * 1000.))
+        print('Speedup ', (t_1 - t_0) / (t_2 - t_1))
+        
 
 
 
 
 
 if __name__ == "__main__":
-    Test(2)
+    Test(3)
