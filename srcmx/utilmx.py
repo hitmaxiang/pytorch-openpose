@@ -341,7 +341,7 @@ def SlidingDistance(pattern, sequence):
     n = len(sequence)
     _len = n - m + 1
     dist = np.square(pattern[0] - sequence[:_len])
-    dist = dist.astype(np.float32)
+    # dist = dist.astype(np.float32)
     for i in range(1, m):
         dist += np.square(pattern[i] - sequence[i:i+_len])
     if len(dist.shape) == 2:
@@ -352,6 +352,7 @@ def SlidingDistance(pattern, sequence):
 def matrixprofile(sequenceA, sequenceB, m):
     l_1 = len(sequenceA)
     l_2 = len(sequenceB)
+    # DisMat = np.zeros((l_1-m+1, l_2-m+1), dtype=np.float16)
     DisMat = np.zeros((l_1-m+1, l_2-m+1))
     DisMat[0, :] = SlidingDistance(sequenceA[:m], sequenceB)
     DisMat[:, 0] = SlidingDistance(sequenceB[:m], sequenceA)
@@ -362,6 +363,35 @@ def matrixprofile(sequenceA, sequenceB, m):
         DisMat[r, 1:] = np.sqrt(DisMat[r-1, :-1]**2+offset)
     return DisMat
 
+
+def SlidingDistance_torch(pattern, sequence):
+    m = len(pattern)
+    n = len(sequence)
+    _len = n - m + 1
+    dist = torch.square(pattern[0] - sequence[:_len])
+    for i in range(1, m):
+        dist += torch.square(pattern[i] - sequence[i:i+_len])
+    if len(dist.shape) == 2:
+        dist = torch.sum(dist, axis=-1)
+    return torch.sqrt(dist)
+
+
+def matrixprofile_torch(sequenceA, sequenceB, m):
+    l_1 = len(sequenceA)
+    l_2 = len(sequenceB)
+    DisMat = torch.zeros(l_1-m+1, l_2-m+1, dtype=torch.float32, requires_grad=False)
+    # DisMat = torch.zeros(l_1-m+1, l_2-m+1)
+    DisMat = DisMat.to(sequenceA.device)
+    # if torch.cuda.is_available():
+    #     DisMat = DisMat.cuda()
+    DisMat[0, :] = SlidingDistance_torch(sequenceA[:m], sequenceB)
+    DisMat[:, 0] = SlidingDistance_torch(sequenceB[:m], sequenceA)
+    for r in range(1, DisMat.shape[0]):
+        offset = torch.square(sequenceA[r+m-1]-sequenceB[m:])
+        offset -= torch.square(sequenceA[r-1]-sequenceB[:-m])
+        offset = torch.sum(offset, axis=-1)
+        DisMat[r, 1:] = torch.sqrt(DisMat[r-1, :-1]**2+offset)
+    return DisMat
 
 class BestKItems():
     # 注意 bisect 只能沿着一个方向（increase）进行排序

@@ -10,6 +10,7 @@ import time
 import utilmx
 import joblib
 import tslearn
+import torch
 import numpy as np
 import PreprocessingData as PD
 import matplotlib.pyplot as plt
@@ -57,7 +58,7 @@ class Shapelets_mx():
     
     def train(self, word=None, method=2):
         if word is None:
-            words = self.cls_worddict.keys()
+            words = self.cls_worddict.worddict.keys()
         elif isinstance(word, str):
             words = [word]
         elif isinstance(word, list):
@@ -66,6 +67,9 @@ class Shapelets_mx():
         trainedrecords = utilmx.ReadShapeletRecords('../data/spbsl/shapeletED.txt')
 
         for word in words:
+            # 现阶段，对于sample特别多的先不分析
+            # if len(self.cls_worddict.worddict[word]) >= 200:
+            #     continue
             self.word = word
             samples, sample_indexes = self.Getsamples(word)
             
@@ -79,7 +83,8 @@ class Shapelets_mx():
                     # self.FindShaplets_tslearn_class(samples, pos_indexes, m)
                     pass
                 elif method == 2:
-                    self.FindShaplets_brute_force_ED(samples, sample_indexes, m)
+                    # self.FindShaplets_brute_force_ED(samples, sample_indexes, m)
+                    self.FindShaplets_brute_force_ED_torch(samples, sample_indexes, m)
     
     def FindShaplets_dtw_methods(self, samples, pos_indexes, m_len):
         # 对样本集合进行归一化处理
@@ -185,8 +190,62 @@ class Shapelets_mx():
             # 针对每一个可能的 candidate sign, 求解它的score
             for candin_index in range(l_1-m_len+1):
                 score, thre = self.Bipartition_score(Dis_sample[:, candin_index], sum(labels))
-                key = '%s-framindex:%d-offset:%d' % (sample_indexes[i][0], sample_indexes[i][1], candin_index)
+                key = '%s-framindex:%d-offset:%d-m_len:%d' % (sample_indexes[i][0], sample_indexes[i][1], candin_index, m_len)
                 data = Dis_loc[:, candin_index]
+                BestKshapelets.insert(score, [key, data])
+        
+        Headerinfo = 'the word:%s with m length: %d' % (self.word, m_len)
+        BestKshapelets.wirteinfo(Headerinfo, '../data/spbsl/shapeletED.txt', 'a')
+        print('%d samples with %d m_len cost time %f seconds' % (N, m_len, (time.time()-begin_time)))
+
+    def FindShaplets_brute_force_ED_torch(self, samples, sample_indexes, m_len):
+        
+        begin_time = time.time()
+        # 对样本集合进行归一化处理
+        # samples = PD.NormlizeData(samples, mode=1)
+        N = len(samples)
+        BestKshapelets = utilmx.BestKItems(K=10)
+
+        lengths = [0] + [len(x) for x in samples] 
+        cumlength = np.cumsum(lengths)
+
+        labels = [x[-1] for x in sample_indexes]
+        samples = [torch.from_numpy(x) for x in samples]
+        catsamples = torch.cat(samples, dim=0)
+        if torch.cuda.is_available():
+            catsamples = catsamples.cuda()
+
+        # 不可以用全体的方式进行，需要使用分批次的方式进行
+        # with torch.no_grad():
+        #     DISMAT = utilmx.matrixprofile_torch(catsamples[:cumlength[sum(labels)]], catsamples, m_len)
+        #     # DISMAT = utilmx.matrixprofile_torch(catsamples, catsamples, m_len)
+        # DISMAT = DISMAT.cpu().numpy()
+        # torch.cuda.empty_cache()
+
+        for i in range(sum(labels)):
+            l_1 = lengths[i+1]
+            Dis_sample = np.zeros((len(samples), l_1-m_len+1))
+            Dis_loc = np.zeros(Dis_sample.shape, dtype=np.int16)
+            
+            begin = cumlength[i]
+            end = begin + lengths[i+1]
+            with torch.no_grad():
+                DISMAT = utilmx.matrixprofile_torch(catsamples[begin:end], catsamples, m_len)
+            DISMAT = DISMAT.cpu().numpy()
+
+            for j in range(len(samples)):
+                index_by = cumlength[j]
+                index_ey = index_by + lengths[j+1] - m_len + 1
+
+                DisMat = DISMAT[:, index_by:index_ey]
+                Dis_loc[j] = np.argmin(DisMat, axis=-1)
+                Dis_sample[j] = np.min(DisMat, axis=-1)
+
+            # 针对每一个可能的 candidate sign, 求解它的score
+            for candin_index in range(l_1-m_len+1):
+                score, thre = self.Bipartition_score(Dis_sample[:, candin_index], sum(labels))
+                key = '%s-framindex:%d-offset:%d-m_len:%d' % (sample_indexes[i][0], sample_indexes[i][1], candin_index, m_len)
+                data = Dis_loc[:sum(labels), candin_index]
                 BestKshapelets.insert(score, [key, data])
         
         Headerinfo = 'the word:%s with m length: %d' % (self.word, m_len)
@@ -378,8 +437,12 @@ def Test(testcode):
         worddictpath = '../data/spbsl/WordDict.pkl'
         subtitledictpath = '../data//spbsl/SubtitleDict.pkl'
         cls_shapelet = Shapelets_mx(motionsdictpath, worddictpath, subtitledictpath)
-        cls_shapelet.train('predict', method=2)
-        
+        # consider: 500, thank:2153
+        # cls_shapelet.train('thank', method=2)
+        cls_shapelet.train(method=2)
 
+        
 if __name__ == "__main__":
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     Test(2)
