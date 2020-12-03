@@ -39,7 +39,7 @@ def Batch_hand_extraction(videopath, motiondata, recpoints, outpath):
         #     joblib.dump(HandMat[:count], outpath)
         #     return
 
-        for i in range(batchsize):
+        for i in range(len(Leftpeaks)):
             # right peaks
             rpeaks = rightpeaks[i]
             rx, ry, rw = rightparams[i]
