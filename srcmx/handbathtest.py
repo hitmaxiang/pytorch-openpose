@@ -20,14 +20,15 @@ from scipy.ndimage.filters import gaussian_filter
 
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
+from Batch_model import HandImageDataset, Batch_hand
 
 
-class HandImageDataset(Dataset):
+class HandImageDataset_mx(Dataset):
     def __init__(self, videopath, motiondata, recpoints, boxsize):
         super().__init__()
         self.video = cv2.VideoCapture(videopath)
         self.motiondata = motiondata
-        self.Recpoints = recpoints
+        self.crop = recpoints
         self.boxsize = boxsize
 
         self.FrameCounts = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -37,7 +38,41 @@ class HandImageDataset(Dataset):
         return self.FrameCounts
     
     def __getitem__(self, idx):
+        _, image = self.video.read()
+        image = image[self.crop[0][1]:self.crop[1][1], self.crop[0][0]:self.crop[1][0], :]
+
+        # 根据posemat 构建 subset 
+        pose = self.motiondata[idx, :, :]
+        subset = np.zeros((1, 20))
+        candidate = np.zeros((20, 4))
+        for i in range(18):
+            if sum(pose[i, :]) == 0:
+                subset[0, i] = -1
+            else:
+                subset[0, i] = i
+            candidate[i, :2] = pose[i, :2]
         
+        hands_list = utilmx.handDetect(candidate, subset, image.shape[:2])
+
+        LeftHand = np.zeros((self.boxsize, self.boxsize, 3), dtype=np.uint8) + 128
+        RightHand = np.zeros_like(LeftHand) + 128
+        leftparams = np.zeros((3,))
+        rightparams = np.zeros_like(leftparams)
+
+        for x, y, w, is_left in hands_list:
+            if not is_left:
+                tempimg = image[y:y+w, x:x+w, :]
+                RightHand = cv2.resize(tempimg, (self.boxsize, self.boxsize), interpolation=cv2.INTER_CUBIC)
+                rightparams = np.array([x, y, w])
+            else:
+                tempimg = cv2.flip(image[y:y+w, x:x+w, :], 1)
+                LeftHand = cv2.resize(tempimg, (self.boxsize, self.boxsize), interpolation=cv2.INTER_CUBIC)
+                leftparams = np.array([x, y, w])
+
+        RightHand = transforms.ToTensor()(RightHand)
+        LeftHand = transforms.ToTensor()(LeftHand)
+
+        return LeftHand, leftparams, RightHand, rightparams
 
 
 class Batch_hand_mx():
@@ -60,18 +95,18 @@ class Batch_hand_mx():
         if torch.cuda.is_available():
             self.guassian_filter_conv.cuda()
 
-    def __call__(self, oriImg):
+    def __call__(self, batch_imgs):
         
-        t0 = time.time()
+        # t0 = time.time()
         
-        h0, w0 = oriImg.shape[:2]
-        assert h0 == w0
-        s0 = h0/self.boxsize
-        oriImg = cv2.resize(oriImg, (self.boxsize, self.boxsize), interpolation=cv2.INTER_CUBIC)
+        # h0, w0 = oriImg.shape[:2]
+        # assert h0 == w0
+        # s0 = h0/self.boxsize
+        # oriImg = cv2.resize(oriImg, (self.boxsize, self.boxsize), interpolation=cv2.INTER_CUBIC)
 
-        batch_imgs = np.transpose(np.float32(oriImg[:, :, :, np.newaxis]), (3, 2, 0, 1)) / 256
-        batch_imgs = torch.from_numpy(batch_imgs)
-        batch_imgs = batch_imgs - 0.5
+        # batch_imgs = np.transpose(np.float32(oriImg[:, :, :, np.newaxis]), (3, 2, 0, 1)) / 256
+        # batch_imgs = torch.from_numpy(batch_imgs)
+    
         # if np.random.randint(10) > 5:
         #     print('zero nimage')
         #     batch_imgs = torch.zeros_like(batch_imgs)
@@ -87,7 +122,7 @@ class Batch_hand_mx():
                 # scale, n_h, n_w, pad_h, pad_w = self.calculate_size_pad(s, h, w)
                 # T_images = F.interpolate(batch_imgs, scale_factor=scale, mode='bicubic')
                 # T_images = F.pad(T_images, [0, pad_w, 0, pad_h], mode='constant', value=0)
-
+            batch_imgs = batch_imgs - 0.5
             heatmap = self.model(batch_imgs)
             heatmap = F.interpolate(heatmap, scale_factor=self.stride, mode='bicubic')
             # heatmap = heatmap[:, :, :n_h, :n_w]
@@ -122,8 +157,8 @@ class Batch_hand_mx():
                 map_ori[label_img != max_index] = 0
 
                 y, x = util.npmax(map_ori)
-                # all_peaks.append([x, y, np.max(map_ori)])
-                all_peaks.append([int(round(x*s0)), int(round(y*s0)), np.max(map_ori)])
+                all_peaks.append([x, y, np.max(map_ori)])
+                # all_peaks.append([int(round(x*s0)), int(round(y*s0)), np.max(map_ori)])
             Batch_peaks.append(all_peaks)
 
 
@@ -176,7 +211,7 @@ class Batch_hand_mx():
             
         # # print('find:', time.time()-t0)
         # t0 = time.time()
-        return np.array(Batch_peaks[0])
+        return np.array(Batch_peaks)
 
     def calculate_size_pad(self, g_scale, height, width):
         scale = self.boxsize * g_scale/height
@@ -264,9 +299,89 @@ def detecthand(videopath, PoseMat, recpoint, display=False):
     print('the avg peaks is %f' % (validkeypointnum/counters))
 
 
+def BatchHandExtract(videopath, motiondata, recpoints, outpath):
+    boxsize = 368
+    batchsize = 32
+
+    Handdataset = HandImageDataset(videopath, motiondata, recpoints, boxsize)
+    HandDataloader = DataLoader(Handdataset, batchsize, shuffle=False)
+
+    HandMat = np.zeros((len(motiondata), 42, 3))
+    count = 0
+    for samples in HandDataloader:
+        t0 = time.time()
+
+        if count > 200:
+            joblib.dump(HandMat[:count], outpath)
+            break
+
+        LeftHand, leftparams, RightHand, rightparams = samples
+        Leftpeaks = hand_estimation(LeftHand)
+        rightpeaks = hand_estimation(RightHand)
+        
+        leftparams = leftparams.numpy()
+        rightparams = rightparams.numpy()
+
+        for i in range(batchsize):
+            # right peaks
+            rpeaks = rightpeaks[i]
+            rx, ry, rw = rightparams[i]
+            rpeaks[:, :2] = rpeaks[:, :2] * rw / boxsize
+
+            rpeaks[:, 0] = np.where(rpeaks[:, 0] == 0, rpeaks[:, 0], rpeaks[:, 0]+rx)
+            rpeaks[:, 1] = np.where(rpeaks[:, 1] == 0, rpeaks[:, 1], rpeaks[:, 1]+ry)
+            HandMat[count, 21:, :] = rpeaks
+
+            # left peaks
+            lpeaks = Leftpeaks[i]
+            lx, ly, lw = leftparams[i]
+            lpeaks[:, :2] = lpeaks[:, :2] * lw / boxsize
+            lpeaks[:, 0] = np.where(lpeaks[:, 0] == 0, lpeaks[:, 0], lw-lpeaks[:, 0]-1+lx)
+            lpeaks[:, 1] = np.where(lpeaks[:, 1] == 0, lpeaks[:, 1], lpeaks[:, 1]+ly)
+            HandMat[count, :21, :] = lpeaks
+
+            count += 1
+            # if count % 1000 == 0:
+            #     print('%s-%d/%d' % (outpath, count, len(motiondata)))
+        diff = time.time() - t0
+        print('count: %d cost %f--avg: %f' % (count, diff, diff/batchsize))
+
+
+def CheckHandData(videopath, motiondata, handdata, recpoint):
+    video = cv2.VideoCapture(videopath)
+    for i in range(len(handdata)):
+        _, frame = video.read()
+
+        hands = handdata[i]
+        lpeaks = hands[:21, :2]
+        rpeaks = hands[21:, :2]
+
+        oriImg = frame[recpoint[0][1]:recpoint[1][1], recpoint[0][0]:recpoint[1][0], :]
+
+        # 根据posemat 构建 subset 
+        pose = motiondata[i, :, :]
+        subset = np.zeros((1, 20))
+        candidate = np.zeros((20, 4))
+        for i in range(18):
+            if sum(pose[i, :]) == 0:
+                subset[0, i] = -1
+            else:
+                subset[0, i] = i
+            candidate[i, :2] = pose[i, :2]
+        
+        canvas = util.draw_bodypose(oriImg, candidate, subset)
+        canvas = utilmx.draw_handpose_by_opencv(canvas, [lpeaks, rpeaks])
+        # cv2.imwrite('%d.jpg' % counters, canvas)
+        cv2.imshow('bodyhand', canvas)
+        q = cv2.waitKey(0) & 0xff
+        if q == ord('q'):
+            break
+        
+
 def Test(code, display):
     global hand_estimation
-    hand_estimation = Batch_hand_mx('../model/hand_pose_model.pth')
+    # hand_estimation = Batch_hand_mx('../model/hand_pose_model.pth')
+    hand_estimation = Batch_hand('../model/hand_pose_model.pth')
 
     videofolder = '/home/mario/signdata/spbsl/normal'
     motiondatadir = '../data/spbsl/motionsdic.pkl'
@@ -300,12 +415,38 @@ def Test(code, display):
                         PoseMat = motiondatadic[keynum][0]
                         joblib.dump(PoseMat, '../data/spbsl/100.pkl')
                     detecthand(filepath, PoseMat, Recpoint, display=display)
+    elif TestCode == 2:
+        wantnum = '099'
+        wantmotionpath = '../data/spbsl/%s.pkl' % wantnum
+        wanthandpath = '../data/spbsl/%shand.pkl' % wantnum
+
+        np.random.shuffle(filenames)
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1]
+            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
+                filepath = os.path.join(videofolder, filename)
+                keynum = filename[:3]
+                if keynum == wantnum:
+                    if os.path.exists(wantmotionpath):
+                        PoseMat = joblib.load(wantmotionpath)
+                    else:
+                        motiondatadic = joblib.load(motiondatadir)
+                        PoseMat = motiondatadic[keynum][0]
+                        joblib.dump(PoseMat, wantmotionpath)
+                    if not os.path.exists(wanthandpath):
+                        BatchHandExtract(filepath, PoseMat, Recpoint, wanthandpath)
+                    
+                    handMat = joblib.load(wanthandpath)
+
+                    CheckHandData(filepath, PoseMat, handMat, Recpoint)
+
+
 
 
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--testcode', type=int, help='the test code', default=1)
+    parser.add_argument('-t', '--testcode', type=int, help='the test code', default=2)
     parser.add_argument('-d', '--display', action='store_true')
     args = parser.parse_args()
 
