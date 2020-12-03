@@ -312,7 +312,7 @@ class Batch_hand():
         multiplier = [x * boxsize / oriImg.shape[0] for x in scale_search]
         heatmap_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 22))
         # paf_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 38))
-
+        t0 = time.time()
         for m in range(len(multiplier)):
             scale = multiplier[m]
             imageToTest = cv2.resize(oriImg, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
@@ -336,6 +336,9 @@ class Batch_hand():
 
             heatmap_avg += heatmap / len(multiplier)
 
+        print('1:', time.time()-t0)
+        t0 = time.time()
+
         all_peaks = []
         for part in range(21):
             map_ori = heatmap_avg[:, :, part]
@@ -352,6 +355,9 @@ class Batch_hand():
 
             y, x = util.npmax(map_ori)
             all_peaks.append([x, y, np.max(map_ori)])
+            
+        print('find:', time.time()-t0)
+        t0 = time.time()
         return np.array(all_peaks)
 
     def calculate_size_pad(self, g_scale, height, width):

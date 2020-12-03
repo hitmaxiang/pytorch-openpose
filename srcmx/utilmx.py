@@ -299,6 +299,7 @@ def handDetect(candidate, subset, img_shape):
             y = y3 + ratioWristElbow * (y3 - y2)
             distanceWristElbow = math.sqrt((x3 - x2) ** 2 + (y3 - y2) ** 2)
             distanceElbowShoulder = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            # width = 1.5 * max(distanceWristElbow, 0.9 * distanceElbowShoulder)
             width = 1.5 * max(distanceWristElbow, 0.9 * distanceElbowShoulder)
             
             # x-y refers to the center --> offset to topLeft point
@@ -393,6 +394,7 @@ def matrixprofile_torch(sequenceA, sequenceB, m):
         DisMat[r, 1:] = torch.sqrt(DisMat[r-1, :-1]**2+offset)
     return DisMat
 
+
 class BestKItems():
     # 注意 bisect 只能沿着一个方向（increase）进行排序
     def __init__(self, K, preferlarge=True):
@@ -402,6 +404,8 @@ class BestKItems():
         self.data = {}
     
     def insert(self, score, items):
+        if items[0] in self.keys:
+            return
         index = bisect.bisect_left(self.scores, score)
         if index == 0:
             if len(self.scores) >= self.capacity:

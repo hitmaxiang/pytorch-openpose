@@ -68,8 +68,11 @@ class Shapelets_mx():
 
         for word in words:
             # 现阶段，对于sample特别多的先不分析
-            # if len(self.cls_worddict.worddict[word]) >= 200:
-            #     continue
+            if len(self.cls_worddict.worddict[word]) >= 500:
+                continue
+            if word in trainedrecords.keys():
+                if len(trainedrecords[word]) == 26:
+                    continue
             self.word = word
             samples, sample_indexes = self.Getsamples(word)
             
