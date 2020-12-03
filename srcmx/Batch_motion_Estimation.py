@@ -9,13 +9,61 @@ import joblib
 import utilmx
 import numpy as np
 import Batch_model as BM
-
+from torch.utils.data import DataLoader
 
 body_pth = '../model/body_pose_model.pth'
 hand_pth = '../model/hand_pose_model.pth'
 
-# Batch_Body_model = BM.Batch_body(body_pth)
 
+# Batch_Body_model = BM.Batch_body(body_pth)
+def Batch_hand_extraction(videopath, motiondata, recpoints, outpath):
+    boxsize = 368
+    batchsize = 32
+
+    Handdataset = BM.HandImageDataset(videopath, motiondata, recpoints, boxsize)
+    HandDataloader = DataLoader(Handdataset, batchsize, shuffle=False)
+
+    COUNTS = len(motiondata)
+    HandMat = np.zeros((COUNTS, 42, 3))
+    count = 0
+    for samples in HandDataloader:
+
+        LeftHand, leftparams, RightHand, rightparams = samples
+        Leftpeaks = batch_hand_estimation(LeftHand)
+        rightpeaks = batch_hand_estimation(RightHand)
+        
+        leftparams = leftparams.numpy()
+        rightparams = rightparams.numpy()
+
+        # if count > 1000:
+        #     joblib.dump(HandMat[:count], outpath)
+        #     return
+
+        for i in range(batchsize):
+            # right peaks
+            rpeaks = rightpeaks[i]
+            rx, ry, rw = rightparams[i]
+            rpeaks[:, :2] = rpeaks[:, :2] * rw / boxsize
+
+            rpeaks[:, 0] = np.where(rpeaks[:, 0] == 0, rpeaks[:, 0], rpeaks[:, 0]+rx)
+            rpeaks[:, 1] = np.where(rpeaks[:, 1] == 0, rpeaks[:, 1], rpeaks[:, 1]+ry)
+            HandMat[count, 21:, :] = rpeaks
+
+            # left peaks
+            lpeaks = Leftpeaks[i]
+            lx, ly, lw = leftparams[i]
+            lpeaks[:, :2] = lpeaks[:, :2] * lw / boxsize
+            lpeaks[:, 0] = np.where(lpeaks[:, 0] == 0, lpeaks[:, 0], lw-lpeaks[:, 0]-1+lx)
+            lpeaks[:, 1] = np.where(lpeaks[:, 1] == 0, lpeaks[:, 1], lpeaks[:, 1]+ly)
+            HandMat[count, :21, :] = lpeaks
+
+            count += 1
+            if count % 1000 == 0:
+                print('%s-%d/%d' % (outpath, count, COUNTS))
+
+    joblib.dump(HandMat, outpath)
+    print('the %s file is saved' % outpath)
+            
 
 def Batch_body_extraction(videopath, outpath, batch_size, recpoint):
 
@@ -83,12 +131,14 @@ def Test(code, init=False, mode='body', dataset='spbsl', server=False):
         datadir = '../data/bbc'
         Recpoint = [(350, 100), (700, 400)]
     
-    batch_size = 16
     # get the video-names with the giving videofolder
     filenames = os.listdir(videofolder)
     filenames.sort()
 
     if code == 0:
+        global Batch_Body_model
+        Batch_Body_model = BM.Batch_body(body_pth)
+        batch_size = 32
         print('batch extract the motion data from the videos and save')
         np.random.shuffle(filenames)
         utilmx.Records_Read_Write().Get_extract_ed_ing_files(datadir, init)
@@ -106,6 +156,33 @@ def Test(code, init=False, mode='body', dataset='spbsl', server=False):
                     Batch_body_extraction(filepath, outpath, batch_size, Recpoint)
                 elif outname not in complet_files:
                     pass
+    elif code == 1:
+        global batch_hand_estimation
+        batch_hand_estimation = BM.Batch_hand(hand_pth)
+        batch_size = 32
+        motiondatadicpath = '../data/spbsl/motionsdic.pkl'
+        motiondict = joblib.load(motiondatadicpath)
+
+        print('batch extract the hand data from the videos and save')
+        np.random.shuffle(filenames)
+        utilmx.Records_Read_Write().Get_extract_ed_ing_files(datadir, init)
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1]
+            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
+                complet_files = utilmx.Records_Read_Write().Get_extract_ed_ing_files(datadir)
+                complet_videos = [x[:9] for x in complet_files]
+                filepath = os.path.join(videofolder, filename)
+                outname = 'video-%s-hand.pkl' % (filename[:3])
+                if outname[:9] not in complet_videos:
+                    keynum = filename[:3]
+                    motiondata = motiondict[keynum][0]
+                    print(outname)
+                    utilmx.Records_Read_Write().Add_extract_ed_ing_files(datadir, outname)
+                    outpath = os.path.join(datadir, outname)
+                    Batch_hand_extraction(filepath, motiondata, Recpoint, outpath)
+                elif outname not in complet_files:
+                    pass
+
 
 
 if __name__ == "__main__":
@@ -124,7 +201,6 @@ if __name__ == "__main__":
         print('cuda 1')
     else:
         print('cuda 0')
-    Batch_Body_model = BM.Batch_body(body_pth)
 
     print(args.testcode, args.init, args.mode, args.dataset, args.server)
     Test(code=args.testcode, init=args.init, mode=args.mode,

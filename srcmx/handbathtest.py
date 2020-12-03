@@ -416,9 +416,9 @@ def Test(code, display):
                         joblib.dump(PoseMat, '../data/spbsl/100.pkl')
                     detecthand(filepath, PoseMat, Recpoint, display=display)
     elif TestCode == 2:
-        wantnum = '099'
+        wantnum = '013'
         wantmotionpath = '../data/spbsl/%s.pkl' % wantnum
-        wanthandpath = '../data/spbsl/%shand.pkl' % wantnum
+        wanthandpath = '../data/spbsl/video-%s-hand.pkl' % wantnum
 
         np.random.shuffle(filenames)
         for filename in filenames:
