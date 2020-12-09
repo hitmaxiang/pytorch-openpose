@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-11-23 22:19:56
+LastEditTime: 2020-12-07 20:46:12
 '''
 import os
 import re
@@ -26,6 +26,11 @@ from nltk.corpus import wordnet, stopwords
 
 class WordsDict():
     def __init__(self, worddictpath, subdictpath, overwrite=False):
+        # initialize the stemmer and the lemamatizer
+        self.Porter_Stemmer = PorterStemmer()
+        self.Lancas_Stemmer = LancasterStemmer()
+        self.wordnet_lemmatizer = WordNetLemmatizer()
+        
         # load the subtitile dictionary from the disk
         self.subtitledict = joblib.load(subdictpath)
         if (overwrite is True) or (not os.path.exists(worddictpath)):
@@ -37,11 +42,6 @@ class WordsDict():
             self.worddict = worddict
         else:
             print('please input the worddictpath or subdictpath')
-
-        # initialize the stemmer and the lemamatizer
-        self.Porter_Stemmer = PorterStemmer()
-        self.Lancas_Stemmer = LancasterStemmer()
-        self.wordnet_lemmatizer = WordNetLemmatizer()
 
     def WordDict_Construct(self, subtitledict):
         # initialize the worddict dict
@@ -149,7 +149,7 @@ class WordsDict():
         # 确定 word 的 近义词集
         word_synsets = wordnet.synsets(word)
         synwords = set(chain.from_iterable([lemma.lemma_names() for lemma in word_synsets]))
-        counter = 0
+        # counter = 0
         while True:
             # counter += 1
             videokey = np.random.choice(list(self.subtitledict.keys()))
@@ -222,7 +222,6 @@ class WordsDict():
         counters.sort()
         plt.plot(counters)
         plt.show()
-
 
 
 class AnnotationDict:
@@ -315,15 +314,16 @@ def Test(testcode):
     # for the spbsl data
     subdictpath = '../data/spbsl/SubtitleDict.pkl'
     worddictpath = '../data/spbsl/WordDict.pkl'
-
-    annotationpath = '../data/bbc_sign_annotation.mat'
+    # annotationpath = '../data/bbc_sign_annotation.mat'
+    
     # test the subtiledict class
     if testcode == 0:
-        cl_worddict = WordsDict(worddictpath, subdictpath, overwrite=False)
+        cl_worddict = WordsDict(worddictpath, subdictpath, overwrite=True)
         cl_worddict.ChooseSamples('predict', 1.5)
         # cl_worddict.Infomation()
     elif testcode == 1:
-        anotationdict = AnnotationDict(annotationpath)
+        pass
+
 
 if __name__ == "__main__":
     Test(0)

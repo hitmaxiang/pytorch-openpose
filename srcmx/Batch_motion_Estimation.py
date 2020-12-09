@@ -184,7 +184,6 @@ def Test(code, init=False, mode='body', dataset='spbsl', server=False):
                     pass
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('testcode', type=int, help='the test code')

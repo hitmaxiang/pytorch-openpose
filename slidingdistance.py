@@ -4,15 +4,34 @@ Version: 2.0
 Autor: mario
 Date: 2020-11-27 15:51:11
 LastEditors: mario
-LastEditTime: 2020-11-27 23:01:41
+LastEditTime: 2020-12-09 22:17:06
 '''
 import scipy
 import time
 import torch
 import numpy as np
+import torch.nn as nn
 import torch.nn.functional as F
 from scipy.signal import convolve2d, convolve
 from scipy import fft
+
+
+class SlidingDisNet(nn.Module):
+    def __init__(self, shape, query=None):
+        super().__init__()
+        m, D = shape
+        
+    
+    def __call__(self, X):
+        # X 的 shape 应该是 （Batch x D x T）
+        
+
+    def forward(self, X):
+        pass
+
+
+        
+
 
 
 def slidingdotproductfft(Q, T):
@@ -69,18 +88,23 @@ def slidingDistance_convol(Q, T):
     m = len(Q)
     n = len(T)
     DIS = np.zeros((n-m+1,))
-    DIS += np.sum(np.square(Q))
-    # SS = np.sum(Q*Q)
+    # DIS += np.sum(np.square(Q))
+    SS = np.sum(Q*Q)
     TT = np.sum(T*T, axis=-1)
     offset = TT[m:] - TT[:(n-m)]
     cumoffset = np.cumsum(offset)
     sum1 = np.sum(TT[:m])
     DIS[0] = sum1
     DIS[1:] = sum1 + cumoffset 
-    Q_r = np.flip(Q)
-    J_3 = slidingdotproductconvl(Q_r, T)[:, 0]
+    # Q_r = np.flip(Q)
+    # J_3 = slidingdotproductconvl(Q_r, T)[:, 0]
     # J_3 = slidingdotproductorigi(Q, T)
+    
+    Q = torch.from_numpy(np.transpose(Q)[np.newaxis, :])
+    T = torch.from_numpy(np.transpose(T)[np.newaxis, :])
+    J_3 = slidingdotproductconvltorch(Q, T)[0, 0, :].numpy()
 
+    DIS += SS
     DIS -= 2*J_3
     return np.sqrt(DIS)
 
@@ -132,7 +156,7 @@ def Test(testcode):
     elif testcode == 1:
         Q = np.random.rand(10, 3)
         T = np.random.rand(500, 3)
-        Iters = 1000
+        Iters = 10
 
         t0 = time.time()
         for _ in range(Iters):
@@ -147,10 +171,6 @@ def Test(testcode):
         print('Orig %0.3f ms, zero approach %0.3f ms' % ((t1 - t0) * 1000., (t2 - t1) * 1000.))
         print('Speedup ', (t1 - t0) / (t2 - t1))
         
-
-        
-
-
         
 if __name__ == "__main__":
     Test(1)

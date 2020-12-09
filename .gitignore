@@ -9,4 +9,5 @@ __pycache__
 *.avi
 *.npy
 *.pkl
+*.rec
 shapeletED.txt
