@@ -1,47 +1,24 @@
-import numpy
-import numpy as np
+'''
+Description: 
+Version: 2.0
+Autor: mario
+Date: 2020-11-27 15:51:11
+LastEditors: mario
+LastEditTime: 2020-12-09 22:17:06
+'''
+import scipy
 import time
-import scipy.fft as fft
 import torch
+import numpy as np
+import torch.nn as nn
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
-
-def sliding_dist(A, B):
-    m = len(A)
-    n = len(B)
-    dist = numpy.zeros(n-m+1)
-    for i in range(n-m+1):
-        subrange = B[i:i+m]
-        distance = numpy.linalg.norm(A-subrange)
-        dist[i] = distance
-    return dist
-
-
-def SlidingDistance_torch(pattern, sequence):
-    m = len(pattern)
-    n = len(sequence)
-    _len = n - m + 1
-    dist = torch.square(pattern[0] - sequence[:_len])
-    for i in range(1, m):
-        dist += torch.square(pattern[i] - sequence[i:i+_len])
-    if len(dist.shape) == 2:
-        dist = torch.sum(dist, axis=-1)
-    return torch.sqrt(dist)
-
-
-def matrixprofile_torch(sequenceA, sequenceB, DisMat, m):
-    # l_1 = len(sequenceA)
-    # l_2 = len(sequenceB)
-    # DisMat = torch.zeros(l_1-m+1, l_2-m+1)
-    # if torch.cuda.is_available():
-    #     DisMat = DisMat.cuda()
-    DisMat[0, :] = SlidingDistance_torch(sequenceA[:m], sequenceB)
-    DisMat[:, 0] = SlidingDistance_torch(sequenceB[:m], sequenceA)
-    for r in range(1, DisMat.shape[0]):
-        offset = torch.square(sequenceA[r+m-1]-sequenceB[m:])
-        offset -= torch.square(sequenceA[r-1]-sequenceB[:-m])
-        offset = torch.sum(offset, axis=-1)
-        DisMat[r, 1:] = torch.sqrt(DisMat[r-1, :-1]**2+offset)
-    return DisMat
+from copy import deepcopy
+from scipy import fft
+from srcmx import utilmx
+from scipy.signal import convolve2d, convolve
+from sklearn.linear_model import LogisticRegression as LR
 
 
 def SlidingDistance(pattern, sequence):
@@ -62,196 +39,357 @@ def SlidingDistance(pattern, sequence):
     return np.sqrt(dist)
 
 
-def matrixprofile(sequenceA, sequenceB, DisMat, m):
+def matrixprofile_torch(sequenceA, sequenceB, m, DisMat):
     # l_1 = len(sequenceA)
     # l_2 = len(sequenceB)
-    # DisMat = np.zeros((l_1-m+1, l_2-m+1))
-    DisMat[0, :] = SlidingDistance(sequenceA[:m], sequenceB)
-    DisMat[:, 0] = SlidingDistance(sequenceB[:m], sequenceA)
+    # DisMat = torch.zeros(l_1-m+1, l_2-m+1, dtype=torch.float32, requires_grad=False)
+    # DisMat = torch.zeros(l_1-m+1, l_2-m+1)
+    # DisMat = DisMat.to(sequenceA.device)
+    # sequenceA = sequenceA.double()
+    # sequenceB = sequenceB.double()
+    # DisMat = DisMat.double()
+    DisMat.zero_()
+    # if torch.cuda.is_available():
+    #     DisMat = DisMat.cuda()
+    DisMat[0, :] = utilmx.SlidingDistance_torch(sequenceA[:m], sequenceB)
+    DisMat[:, 0] = utilmx.SlidingDistance_torch(sequenceB[:m], sequenceA)
     for r in range(1, DisMat.shape[0]):
-        offset = np.square(sequenceA[r+m-1]-sequenceB[m:])
-        offset -= np.square(sequenceA[r-1]-sequenceB[:-m])
-        offset = np.sum(offset, axis=-1)
-        DisMat[r, 1:] = np.sqrt(DisMat[r-1, :-1]**2+offset)
+        offset = torch.square(sequenceA[r+m-1]-sequenceB[m:])
+        offset -= torch.square(sequenceA[r-1]-sequenceB[:-m])
+        offset = torch.sum(offset, axis=-1)
+        DisMat[r, 1:] = torch.sqrt(DisMat[r-1, :-1]**2+offset)
+        # DisMat[r, :] = utilmx.SlidingDistance_torch(sequenceA[r:r+m], sequenceB)
+    return DisMat.float()
+
+
+def matrixprofile_torch_ori(sequenceA, sequenceB, m):
+    l_1 = len(sequenceA)
+    l_2 = len(sequenceB)
+    DisMat = torch.zeros(l_1-m+1, l_2-m+1, dtype=torch.float32, requires_grad=False)
+    # DisMat = torch.zeros(l_1-m+1, l_2-m+1)
+    # DisMat = DisMat.to(sequenceA.device)
+    # DisMat.zero_()
+    # if torch.cuda.is_available():
+    #     DisMat = DisMat.cuda()
+    for r in range(DisMat.shape[0]):
+        DisMat[r, :] = utilmx.SlidingDistance_torch(sequenceA[r:r+m], sequenceB)
     return DisMat
 
 
-def matrixprofile_origi(sequenceA, sequenceB, DisMat, m):
-    for i in range(DisMat.shape[0]):
-        DisMat[i] = SlidingDistance(sequenceA[i:m+i], sequenceB)
-        # DisMat[i] = sliding_dist(sequenceA[i:m+i], sequenceB)
-    return DisMat
+class ShapeletMatrix():
+    def __init__(self):
+        self.cls = LR()
+    
+    def train(self, X, labels, m_len):
+        # X shape batchsize x D x T 或者是 list T x D
+        if isinstance(X, list):
+            samples = [torch.from_numpy(x).float() for x in X]
+            lengths = [len(x) for x in X]
+            catsamples = torch.cat(samples, dim=0)
+            N, T = len(lengths), max(lengths)
+        else:
+            N, D, T = X.shape
+            catsamples = torch.reshape(X.permute(0, 2, 1), (-1, D))
+            lengths = [T] * N
+        
+        bestscore = 0
+        bestloss = float('inf')
+        cumlength = np.cumsum([0] + lengths)
+        shrink = - m_len + 1
+        offset = [x + shrink for x in lengths]
+
+        # 为了避免每次都要重新构建数据库，所以这里提前按照最大的sample构建距离矩阵
+        DISMAT_pre = torch.zeros(T-m_len+1, cumlength[-1]+shrink, dtype=torch.float32)
+
+        # 同样也会准备存放处理结果数据的
+        MinDis = torch.zeros(N, T-m_len+1, dtype=torch.float32)
+        MinLoc = torch.zeros(N, T-m_len+1, dtype=torch.int16)
+        # tempdis = torch.zeros(T-m_len+1, T-m_len+1)
+        MinDis1 = torch.zeros(N, T-m_len+1, dtype=torch.float32)
+        MinLoc1 = torch.zeros(N, T-m_len+1, dtype=torch.int16)
+
+        MinDis2 = torch.zeros(N, T-m_len+1, dtype=torch.float32)
+        MinLoc2 = torch.zeros(N, T-m_len+1, dtype=torch.int16)
+
+        if torch.cuda.is_available():
+            catsamples = catsamples.cuda()
+            DISMAT_pre = DISMAT_pre.cuda()
+            MinDis = MinDis.cuda()
+            MinLoc = MinLoc.cuda()
+
+            MinDis1 = MinDis1.cuda()
+            MinLoc1 = MinLoc1.cuda()
+
+            MinDis2 = MinDis2.cuda()
+            MinLoc2 = MinLoc2.cuda()
+            # tempdis = tempdis.cuda()
+
+        Dis_sample = np.zeros((N, T-m_len+1))
+        Dis_loc = np.zeros(Dis_sample.shape, dtype=np.int16)
+        dis = np.zeros((N,))
+        locs = np.zeros((N,))
+        
+        for i in range(N):
+            if labels[i] == 0:
+                continue
+            # Dis_sample = np.zeros((N, T-m_len+1))
+            # Dis_loc = np.zeros(Dis_sample.shape, dtype=np.int16)
+
+            time_0 = time.time()
+            begin, end = cumlength[i:i+2]
+            # end = T * (i+1)
+            with torch.no_grad():
+                DISMAT_pre[:offset[i]] = matrixprofile_torch(
+                    catsamples[begin:end], 
+                    catsamples, 
+                    m_len, 
+                    DISMAT_pre[:offset[i]])
+                
+                DISMAT = matrixprofile_torch_ori(
+                    catsamples[begin:end], 
+                    catsamples, 
+                    m_len)
+
+                # DISMAT_1 = utilmx.matrixprofile_torch(catsamples[begin:end], catsamples, m_len)
+                time_1 = time.time()
+
+                for j in range(N):
+                    b_loc = cumlength[j]
+                    e_loc = cumlength[j+1] + shrink
+                    tempdis = DISMAT_pre[:offset[i], b_loc:e_loc]
+                    MinDis[j, :offset[i]], MinLoc[j, :offset[i]] = torch.min(tempdis, dim=-1)
+                    MinDis1[j, :offset[i]], MinLoc1[j, :offset[i]] = torch.min(DISMAT[:, b_loc:e_loc], dim=-1)
+                    # MinDis2[j, :offset[i]], MinLoc2[j, :offset[i]] = torch.min(DISMAT_1[:, b_loc:e_loc], dim=-1)
+
+                # for k in range(N):
+                #     b_loc = cumlength[k]
+                #     e_loc = cumlength[k+1] + shrink
+                #     MinDis2[k, :offset[i]], MinLoc2[k, :offset[i]] = torch.min(DISMAT_1[:, b_loc:e_loc], dim=-1)
+                #     # tempdis = DISMAT_1[:, b_loc:e_loc]
+                #     # MinDis2[j, :offset[i]], MinLoc2[j, :offset[i]] = torch.min(tempdis, dim=-1)
+
+                # DISMAR_t = DISMAT_o.view(-1, N, T).permute(1, 0, 2)[:, :, :offset]
+                # MinDis, MinLoc = torch.min(DISMAR_t, dim=-1)
+                # print(torch.max(MinDis))
+
+                Dis_sample = MinDis.cpu().numpy()
+                Dis_loc = MinLoc.cpu().numpy()
+
+                Dis_sample1 = MinDis1.cpu().numpy()
+                Dis_loc1 = MinLoc1.cpu().numpy()
+
+                # Dis_sample2 = MinDis2.cpu().numpy()
+                # Dis_loc2 = MinLoc2.cpu().numpy()
+
+                # # test the 
+                # DISMAT_1 = utilmx.matrixprofile_torch(catsamples[begin:end], catsamples, m_len)
+                # # DISMAT_1[torch.isnan(DISMAT_1)] = float('inf')
+                # for k in range(N):
+                #     b_loc = cumlength[k]
+                #     e_loc = cumlength[k+1] + shrink
+                #     MinDis2[k, :offset[i]], MinLoc2[k, :offset[i]] = torch.min(DISMAT_1[:, b_loc:e_loc], dim=-1)
+                #     # tempdis = DISMAT_1[:, b_loc:e_loc]
+                #     # MinDis2[j, :offset[i]], MinLoc2[j, :offset[i]] = torch.min(tempdis, dim=-1)
+                # # print(torch.max(MinDis))
+
+                # Dis_sample2 = MinDis2.cpu().numpy()
+                # Dis_loc2 = MinLoc2.cpu().numpy()
+
+            
+            # # 针对每一个可能的 candidate sign, 求解它的score
+            # valid1 = np.allclose(Dis_sample2[:, :offset[i]], Dis_sample1[:, :offset[i]])
+            # valid2 = np.allclose(Dis_loc2[:, :offset[i]], Dis_loc1[:, :offset[i]])
+            # valid1 = np.allclose(Dis_sample[:, :offset[i]], Dis_sample1[:, :offset[i]])
+            # valid2 = np.allclose(Dis_loc[:, :offset[i]], Dis_loc1[:, :offset[i]])
+            # valid5 = np.allclose(Dis_sample[:, :offset[i]], Dis_sample2[:, :offset[i]])
+            # valid6 = np.allclose(Dis_loc[:, :offset[i]], Dis_loc2[:, :offset[i]])
+            # print(valid1, valid2, valid3, valid4, valid5, valid6)
+            # print(valid1, valid2)
+            # if not (valid1 and valid2):
+            #     # print(valid1, valid2)
+            #     dismatch = Dis_loc[:, :offset[i]] != Dis_loc1[:, :offset[i]]
+            #     print('points nums: %d' % dismatch.sum())
+            #     points = []
+            #     for r in range(dismatch.shape[0]):
+            #         for c in range(dismatch.shape[1]):
+            #             if dismatch[r, c] == True:
+            #                 points.append((r, c))
+            #     print('labels:', end=' ')
+            #     for item in points:
+            #         print(labels[item[0]].item(), end=' ')
+            #     print('\n maxabsdiff', end=' ')
+            #     print(np.max(np.abs(Dis_sample[:, :offset[i]]-Dis_sample1[:, :offset[i]])))
+            #     print('have nan?', np.isnan(Dis_sample[:, :offset[i]]).sum())
+            # print(np.max(np.abs(Dis_sample[:, :offset[i]] - Dis_sample_2[:, :offset[i]])))
+
+            for candin_index in range(lengths[i]-m_len+1):
+                # print(np.max(np.abs(Dis_sample[:, candin_index]-Dis_sample_2[:, candin_index])))
+                # score = self.Bi_class(Dis_sample[:, candin_index], labels)
+                
+                score = self.Bipartition_score(Dis_sample[:, candin_index], labels.numpy(), bestscore)
+    
+                # print(score, score1)
+
+                loss = np.mean(Dis_sample[:, candin_index][labels == 1])
+                if score > bestscore:
+                    bestscore = score
+                    shapeindex = i
+                    bestloss = loss
+                    dis = deepcopy(Dis_sample[:, candin_index])
+                    locs = deepcopy(Dis_loc[:, candin_index])
+                elif score == bestscore and loss < bestloss:
+                    shapeindex = i
+                    bestloss = loss
+                    dis = deepcopy(Dis_sample[:, candin_index])
+                    locs = deepcopy(Dis_loc[:, candin_index])
+            time_2 = time.time()
+            print('%f----%f' % (time_1-time_0, time_2-time_1))
+            print('%d/%d--->loss: %f, accuracy: %f' % (i, N, bestloss, bestscore))
+
+        self.shapeindex = shapeindex
+        self.locs = locs
+        self.dis = dis
+
+    def Bi_class(self, dis, label):
+        dis = dis[:, np.newaxis]
+        self.cls.fit(dis, label)
+        return self.cls.score(dis, label)
+    
+    def Bipartition_score(self, distances, labels, bestscore):
+        '''
+        description: 针对一个 distances 的 二分类的最大分类精度
+        param: 
+            pos_num: 其中 distance 的前 pos_num 个 的标签为 1, 其余都为 0
+        return: 最高的分类精度, 以及对应的分割位置
+        author: mario
+        '''     
+        dis_sort_index = np.argsort(distances)
+        correct = len(distances) - labels.sum()
+        Bound_correct = len(distances)
+        maxcorrect = correct
+
+        for i, index in enumerate(dis_sort_index):
+            if labels[index] == 1:  # 分对的
+                correct += 1
+                if correct > maxcorrect:
+                    maxcorrect = correct
+            else:
+                correct -= 1
+                Bound_correct -= 1
+            if correct == Bound_correct:
+                break
+            if (Bound_correct/len(distances)) < bestscore:
+                break
+        
+        score = maxcorrect/len(distances)
+
+        return score
+
+
+def samples2tensor(samples):
+    # samples 为样本序列，每个的格式为 T_i x D，具有不同的长度
+    # 获取
+    maxvalue = 12345
+    batchsize = len(samples)
+    lengths = [len(x) for x in samples]
+    T, D = max(lengths), samples[0].shape[1]
+
+    # sample_tensor = torch.zeros(batchsize, D, T, dtype=torch.float32)
+    # sample_tensor[:] = torch.randint(1000, 1100, size=)
+    sample_tensor = torch.randint(20000, 30000, size=(batchsize, D, T)).float()+torch.rand(batchsize, D, T)
+    for i in range(batchsize):
+        sample_tensor[i, :, :lengths[i]] = torch.from_numpy(samples[i]).transpose(0, 1).float()
+    
+    return sample_tensor, lengths
 
 
 def Test(testcode):
     if testcode == 0:
-        A = numpy.random.rand(10, 3)
-        B = numpy.random.rand(500, 3)
-        x = 1000
-        t = time.time()
-
-        for _ in range(x):
-            d1 = sliding_dist(A, B)
-        t1 = time.time()
-
-        for _ in range(x):
-            d2 = SlidingDistance(A, B)
-        t2 = time.time()
-
-        print(numpy.allclose(d1, d2))
-        print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t2 - t1) * 1000.))
-        print('Speedup ', (t1 - t) / (t2 - t1))
-    elif testcode == 1:
-        A = np.random.rand(600, 3)
-        B = np.random.rand(500, 3)
-        m = 10
-        x = 1000
-
-        t = time.time()
-        l_1 = len(A)
-        l_2 = len(B)
-        DisMat = np.zeros((l_1-m+1, l_2-m+1))
-        for _ in range(x):
-            d1 = matrixprofile_origi(A, B, DisMat, m)
-        t1 = time.time()
-
-        for _ in range(x):
-            d2 = matrixprofile(A, B, DisMat, m)
-        t2 = time.time()
-
-        A = torch.from_numpy(A)
-        B = torch.from_numpy(B)
-        DisMat = torch.from_numpy(DisMat)
-        if torch.cuda.is_available():
-            A = A.cuda()
-            B = B.cuda()
-            DisMat = DisMat.cuda()
-        with torch.no_grad():
-            for _ in range(x):
-                d3 = matrixprofile_torch(A, B, DisMat, m)
-        d3 = d3.cpu().numpy()
-        t3 = time.time()
-
-
-        print(numpy.allclose(d1, d2))
-        print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t2 - t1) * 1000.))
-        print('Speedup ', (t1 - t) / (t2 - t1))
-        print(numpy.allclose(d1, d3))
-        print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t3 - t2) * 1000.))
-        print('Speedup ', (t1 - t) / (t3 - t2))
-    elif testcode == 2:
-        A = numpy.random.rand(20, 24)
-        B = numpy.random.rand(500000, 24)
-        x = 10
-        t = time.time()
-
-        for _ in range(x):
-            d1 = SlidingDistanceFFT(A, B)
-        t1 = time.time()
-
-        for _ in range(x):
-            d2 = SlidingDistance(A, B)
-        t2 = time.time()
-
-        print(numpy.allclose(d1, d2))
-        print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t2 - t1) * 1000.))
-        print('Speedup ', (t1 - t) / (t2 - t1))
-    
-    elif testcode == 3:
         # prepare the data
-        N = 10
-        datasets = []
-        for i in range(N):
-            L = np.random.randint(250, 300)
-            datasets.append(np.random.rand(L, 24))
-        # datasequence = np.concatenate(datasets, axis=0)
-
-        t_0 = time.time()
-        # using the couple-2-couple methods
-        for i in range(N):
-            samples1 = datasets[i]
-            for j in range(N):
-                samples2 = datasets[j]
-                datamat = matrixprofile(samples1, samples2, 10)
-        t_1 = time.time()
-
-        # using the concatenate style
-
-        datasequence = np.concatenate(datasets, axis=0)
-        datasequence = torch.from_numpy(datasequence)
-        if torch.cuda.is_available():
-            datasequence = datasequence.cuda()
-        t_11 = time.time()
-        with torch.no_grad():
-            datamats = matrixprofile_torch(datasequence, datasequence, 10)
-        t_2 = time.time()
-
-        print('Orig %0.3f ms, second approach %0.3f ms' % ((t_1 - t_0) * 1000., (t_2 - t_11) * 1000.))
-        print('Speedup ', (t_1 - t_0) / (t_2 - t_11))
-    
-    elif testcode == 4:
-        A = numpy.random.rand(20, 24)
-        B = numpy.random.rand(5000, 24)
-        x = 1000
-        t = time.time()
-
-        for _ in range(x):
-            d1 = SlidingDistance(A, B)
-        t1 = time.time()
-        t11 = time.time()
-
-        A = torch.from_numpy(A)
-        B = torch.from_numpy(B)
-        if torch.cuda.is_available():
-            A = A.cuda()
-            B = B.cuda()
-        # t11 = time.time()
-        with torch.no_grad():
-            for _ in range(x):
-                d2 = SlidingDistance_torch(A, B)
-        t2 = time.time()
-
-        d2 = d2.cpu().numpy()
-        print(numpy.allclose(d1, d2))
-        print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t2 - t11) * 1000.))
-        print('Speedup ', (t1 - t) / (t2 - t11))
-    
-    elif testcode == 5:
-        # prepare the data
-        N = 10
-        datasets = []
-        for i in range(N):
-            L = np.random.randint(250, 300)
-            datasets.append(torch.randn(L, 24))
-        # datasequence = np.concatenate(datasets, axis=0)
-
+        real_m = 10
+        m, d = 10, 24
+        minlen, maxlen = 480, 500
+        samplenum = 500
+        samples = []
+        for _ in range(samplenum):
+            sample = np.random.randn(np.random.randint(minlen, maxlen), d)
+            samples.append(sample)
+        # Ts, lengths = samples2tensor(samples)
+        # Ts = torch.randn(samplenum, d, 500)
+        Y = torch.randint(low=0, high=2, size=(samplenum,))
+        # Y = torch.scatter(torch.zeros(samplenum, 2), 1, Y, 1.0)
+        lengths = [len(x) for x in samples]
+        # 修改一些
         
-        # using the couple-2-couple methods
-        if torch.cuda.is_available():
-            datasets = [x.cuda() for x in datasets]
+        validindex = []
+        query = torch.randn(real_m, d).numpy()
+        for i in range(samplenum):
+            if Y[i] == 1 and np.random.rand() > 0:
+                location = torch.randint(lengths[i] - real_m, size=(samplenum,))
+                validindex.append(i)
+                samples[i][location[i]:location[i]+real_m] = query + 0.1 * torch.randn(real_m, d).numpy()
+        
+        extracter = ShapeletMatrix()
+        extracter.train(samples, Y, m)
 
-        t_0 = time.time()
-        with torch.no_grad():
-            for i in range(N):
-                samples1 = datasets[i]
-                for j in range(N):
-                    samples2 = datasets[j]
-                    datamat = matrixprofile_torch(samples1, samples2, 10)
-        t_1 = time.time()
+        locs = extracter.locs
+        shapindex = extracter.shapeindex
+        dis = extracter.dis
+        shapelet = samples[shapindex][locs[shapindex]:locs[shapindex]+m, 0]
 
-        # using the concatenate style
+        plt.switch_backend('agg')
+        plt.figure(0)
+        for i in range(samplenum):
+            if Y[i] == 1 and i in validindex:
+                plt.plot(samples[i][locs[i]:locs[i]+m, 0], 'b', linewidth=1)
 
-        datasequence = torch.cat(datasets, dim=0)
-        with torch.no_grad():
-            datamats = matrixprofile_torch(datasequence, datasequence, 10)
-        t_2 = time.time()
+        plt.plot(shapelet, 'r', linewidth=2)
+        plt.plot(query[:, 0], 'g--', linewidth=2)
+        plt.title('positive')
+        plt.savefig('pos-1.jpg')
 
-        print('Orig %0.3f ms, second approach %0.3f ms' % ((t_1 - t_0) * 1000., (t_2 - t_1) * 1000.))
-        print('Speedup ', (t_1 - t_0) / (t_2 - t_1))
+        plt.figure(1)
+        for i in range(samplenum):
+            if Y[i] == 0:
+                plt.plot(samples[i][locs[i]:locs[i]+m, 0], 'b', linewidth=1)
+        plt.plot(shapelet, 'r', linewidth=2)
+        plt.plot(query[:, 0], 'g--', linewidth=2)
+        plt.title('negative')
+        plt.savefig('neg-1.jpg')
 
+        plt.figure(2)
+        for i in range(samplenum):
+            if Y[i] == 1:
+                plt.scatter([i], [dis[i].item()], c='r', marker='o')
+            else:
+                plt.scatter([i], [dis[i].item()], c='g', marker='*')
+        plt.savefig('dis-1.jpg') 
 
+    elif testcode == 1:
 
+        a = torch.randn(8, 1)
+        # a[-4:] = maxvalue
+        b = torch.randn(5, 1)
+        # b[-3:] = maxvalue
+        # b[5] = maxvalue
+        m = 3
+        l1 = len(a) - m + 1
+        l2 = len(b) - m + 1
+        dismat = torch.zeros(l1, l2)
+        c = matrixprofile_torch(a, b, m, dismat)
+        d = utilmx.matrixprofile_torch(a, b, m)
+        print(torch.allclose(c, d))
+        # print(a)
+        # print(b)
+        # print(c)
+        # print(d)
+
+        # print(c-d)
+        # print(d)
+        # print('the minimum is')
+        # print(torch.min(c, dim=-1))
+        # print(torch.min(d, dim=-1))
 
 
 if __name__ == "__main__":
-    Test(1)
+    Test(0)

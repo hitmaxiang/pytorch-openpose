@@ -1,157 +1,155 @@
 from srcmx import utilmx
-import numpy as np
 import torch
-import time
+import numpy as np
 
 
-Testcode = 3
-
-N = 1000
-pN = 50
-m_len = 10
-samples = []
-
-for i in range(N):
-    n = np.random.randint(200, 300)
-    samples.append(np.random.rand(n, 24))
-
-# 为torch函数准备样本
-dataset = [x.astype(np.float32) for x in samples]
-datasets = [torch.from_numpy(x) for x in dataset]
-catsamples = torch.cat(datasets, dim=0)
+def SlidingDistanceSquare_torch(pattern, sequence):
+    m = len(pattern)
+    n = len(sequence)
+    _len = n - m + 1
+    dist = torch.square(pattern[0] - sequence[:_len])
+    for i in range(1, m):
+        dist += torch.square(pattern[i] - sequence[i:i+_len])
+    if len(dist.shape) == 2:
+        dist = torch.sum(dist, axis=-1)
+    return dist
 
 
-if Testcode == 0:
-    if torch.cuda.is_available():
-        datasets = [x.cuda() for x in datasets]
-    # 测试 float32 与 float64 精确度
-    for i in range(N):
-        for j in range(N):
-            with torch.no_grad():
-                Dismat_torch = utilmx.matrixprofile_torch(datasets[i], datasets[j], m_len)
-            Dismat_torch = Dismat_torch.cpu().numpy()
-            Dismat_np = utilmx.matrixprofile(samples[i], samples[j], m_len)
-            match = np.allclose(Dismat_torch, Dismat_np)
-            if match is False:
-                raise
-            print('i:%d, j:%d  ' % (i, j), end='\r')
-
-elif Testcode == 1:
-    # 测试 长序列的累积误差对于最终精度的影响
-    if torch.cuda.is_available():
-        catsamples = catsamples.cuda()
-
-    lengths = [0] + [len(x) for x in samples] 
-    cumlength = np.cumsum(lengths)
-
-    # 对于序列长度的限制比较大，不可以非常大
-    with torch.no_grad():
-        DISMAT = utilmx.matrixprofile_torch(catsamples[:cumlength[pN]], catsamples, m_len)
-    DISMAT = DISMAT.cpu().numpy()
-
-    for i in range(pN):
-        index_bx = cumlength[i]
-        index_ex = index_bx + lengths[i+1] - m_len + 1
-        for j in range(len(samples)):
-            index_by = cumlength[j]
-            index_ey = index_by + lengths[j+1] - m_len + 1
-
-            Dismat_torch = DISMAT[index_bx:index_ex, index_by:index_ey]
-
-            Dismat_np = utilmx.matrixprofile(samples[i], samples[j], m_len)
-            match = np.allclose(Dismat_torch, Dismat_np)
-            if match is False:
-                print('\n error %f occurs at (%d, %d)' % (np.linalg.norm(Dismat_np-Dismat_torch), i, j))
-            print('i:%d, j:%d  ' % (i, j), end='\r')
-
-elif Testcode == 2:
-    # 测试短途累积的影响
-    # 测试 长序列的累积误差对于最终精度的影响
-    if torch.cuda.is_available():
-        catsamples = catsamples.cuda()
-
-    lengths = [0] + [len(x) for x in samples] 
-    cumlength = np.cumsum(lengths)
-
-    for i in range(pN):
-        begin = cumlength[i]
-        end = begin + lengths[i+1]
-        with torch.no_grad():
-            DISMAT = utilmx.matrixprofile_torch(catsamples[begin:end], catsamples, m_len)
-        DISMAT = DISMAT.cpu().numpy()
-        for j in range(len(samples)):
-            index_by = cumlength[j]
-            index_ey = index_by + lengths[j+1] - m_len + 1
-
-            Dismat_torch = DISMAT[:, index_by:index_ey]
-
-            Dismat_np = utilmx.matrixprofile(samples[i], samples[j], m_len)
-            match = np.allclose(Dismat_torch, Dismat_np)
-            if match is False:
-                print('\n error %f occurs at (%d, %d)' % (np.linalg.norm(Dismat_np-Dismat_torch), i, j))
-            print('i:%d, j:%d  ' % (i, j), end='\r')
-
-elif Testcode == 3:
-    # 测试短途与长途之间的时间差异
-    print(catsamples.device)
-    if torch.cuda.is_available():
-        catsamples = catsamples.cuda()
-        datasets = [x.cuda() for x in datasets]
-    print(catsamples.device)
-    lengths = [0] + [len(x) for x in samples] 
-    cumlength = np.cumsum(lengths)
-
-    # 长途的
-    t0 = time.time()
-    # with torch.no_grad():
-    #     DISMAT = utilmx.matrixprofile_torch(catsamples[:cumlength[pN]], catsamples, m_len)
-    # DISMAT = DISMAT.cpu().numpy()
-    # for i in range(pN):
-    #     index_bx = cumlength[i]
-    #     index_ex = index_bx + lengths[i+1] - m_len + 1
-    #     for j in range(len(samples)):
-    #         index_by = cumlength[j]
-    #         index_ey = index_by + lengths[j+1] - m_len + 1
-
-    #         Dismat_torch = DISMAT[index_bx:index_ex, index_by:index_ey]
-    t1 = time.time()
-
-    # 短途的
-    for i in range(pN):
-        begin = cumlength[i]
-        end = begin + lengths[i+1]
-        with torch.no_grad():
-            DISMAT = utilmx.matrixprofile_torch(catsamples[begin:end], catsamples, m_len)
-        DISMAT = DISMAT.cpu().numpy()
-        for j in range(len(samples)):
-            index_by = cumlength[j]
-            index_ey = index_by + lengths[j+1] - m_len + 1
-
-            Dismat_torch = DISMAT[:, index_by:index_ey]
-
-    t2 = time.time()
-    print(t2-t1)
-    # for i in range(pN):
-    #     for j in range(N):
-    #         with torch.no_grad():
-    #             Dismat_torch = utilmx.matrixprofile_torch(datasets[i], datasets[j], m_len)
-    #         Dismat_torch = Dismat_torch.cpu().numpy()
-
-    t3 = time.time()
-    for i in range(pN):
-        for j in range(N):
-            Dismat_np = utilmx.matrixprofile(samples[i], samples[j], m_len)
+def matrixprofile_torch_ori(sequenceA, sequenceB, m):
+    l_1 = len(sequenceA)
+    l_2 = len(sequenceB)
+    DisMat = torch.zeros(l_1-m+1, l_2-m+1, dtype=torch.float32, requires_grad=False)
+    # DisMat = torch.zeros(l_1-m+1, l_2-m+1)
+    DisMat = DisMat.to(sequenceA.device)
+    # DisMat.zero_()
+    for i in range(DisMat.shape[0]):
+        DisMat[i] = utilmx.SlidingDistance_torch(sequenceA[i:i+m], sequenceB)
     
-    t4 = time.time()
-    origiterm = t4 - t3
-    longterm = t1 - t0 
-    shortterm = t2 - t1
-    torchterm = t3 - t2
-    print('long %f, short %f, torch %f, origi %f' % (longterm, shortterm, torchterm, origiterm))
-    print(origiterm/np.array([longterm, shortterm, torchterm]))
+    return DisMat
 
 
+def matrixprofile_torch_ori_1(sequenceA, sequenceB, m):
+    l_1 = len(sequenceA)
+    l_2 = len(sequenceB)
+    DisMat = torch.zeros(l_1-m+1, l_2-m+1, dtype=torch.float32, requires_grad=False)
+    # DisMat = torch.zeros(l_1-m+1, l_2-m+1)
+    DisMat = DisMat.to(sequenceA.device)
+    # DisMat.zero_()
+    for i in range(DisMat.shape[0]):
+        DisMat[i] = SlidingDistanceSquare_torch(sequenceA[i:i+m], sequenceB)
+    
+    return torch.sqrt(DisMat)
 
 
+def matrixprofile_torch(sequenceA, sequenceB, m):
+    l_1 = len(sequenceA)
+    l_2 = len(sequenceB)
+    DisMat = torch.zeros(l_1-m+1, l_2-m+1, dtype=torch.float32, requires_grad=False)
+    # DisMat = torch.zeros(l_1-m+1, l_2-m+1)
+    DisMat = DisMat.to(sequenceA.device)
+    # if torch.cuda.is_available():
+    #     DisMat = DisMat.cuda()
+    DisMat[0, :] = utilmx.SlidingDistance_torch(sequenceA[:m], sequenceB)
+    DisMat[:, 0] = utilmx.SlidingDistance_torch(sequenceB[:m], sequenceA)
+    for r in range(1, DisMat.shape[0]):
+        offset = torch.square(sequenceA[r+m-1]-sequenceB[m:])
+        offset -= torch.square(sequenceA[r-1]-sequenceB[:-m])
+        offset = torch.sum(offset, axis=-1)
+        DisMat[r, 1:] = torch.sqrt(torch.square(DisMat[r-1, :-1])+offset)
+    return DisMat
 
+
+def matrixprofile_torch_1(sequenceA, sequenceB, m):
+    l_1 = len(sequenceA)
+    l_2 = len(sequenceB)
+    DisMat = torch.zeros(l_1-m+1, l_2-m+1, dtype=torch.float32, requires_grad=False)
+    # DisMat = torch.zeros(l_1-m+1, l_2-m+1)
+    DisMat = DisMat.to(sequenceA.device)
+    # if torch.cuda.is_available():
+    #     DisMat = DisMat.cuda()
+    DisMat[0, :] = SlidingDistanceSquare_torch(sequenceA[:m], sequenceB)
+    DisMat[:, 0] = SlidingDistanceSquare_torch(sequenceB[:m], sequenceA)
+    for r in range(1, DisMat.shape[0]):
+        offset = torch.square(sequenceA[r+m-1]-sequenceB[m:])
+        offset -= torch.square(sequenceA[r-1]-sequenceB[:-m])
+        offset = torch.sum(offset, axis=-1)
+        # print(offset)
+        # print(DisMat[r-1, :-1])
+        DisMat[r, 1:] = DisMat[r-1, :-1]+offset
+        # print(DisMat[r, 1:])
+        # valid = torch.min(DisMat[r, 1:]).item() < 0
+        # if valid:
+        #     print(DisMat[r, 1:])
+    # print(torch.min(DisMat))
+    return torch.sqrt(DisMat)
+
+
+def samples2tensor(samples):
+    # samples 为样本序列，每个的格式为 T_i x D，具有不同的长度
+    # 获取
+    minvalue, maxvalue = 10000, 12000
+    batchsize = len(samples)
+    lengths = [len(x) for x in samples]
+    T, D = max(lengths), samples[0].shape[1]
+
+    # sample_tensor = torch.zeros(batchsize, D, T, dtype=torch.float32)
+    # sample_tensor[:] = torch.randint(1000, 1100, size=)
+    sample_tensor = torch.randint(minvalue, maxvalue, size=(batchsize, D, T)).float()+torch.rand(batchsize, D, T)
+    for i in range(batchsize):
+        sample_tensor[i, :, :lengths[i]] = torch.from_numpy(samples[i]).transpose(0, 1).float()
+    
+    return sample_tensor, lengths
+
+
+if __name__ == "__main__":
+    TEST = 2
+    
+    if TEST == 0:
+        for i in range(100):
+            A = torch.randn(200, 12)
+            B = torch.randn(300, 12)
+            m = 10
+
+            dis1 = matrixprofile_torch_ori(A, B, m)
+            dis2 = matrixprofile_torch_ori_1(A, B, m)
+            print(i, torch.allclose(dis1, dis2))
+    elif TEST == 1:
+        for i in range(100):
+            A = torch.randn(200, 12)
+            # A = torch.randint(100, 120, size=(200, 12)).float()
+            # A[:-20] = torch.randn(180, 12)
+            B = torch.randn(300000, 12)
+            # B[-15:] = torch.randint(1000, 1200, size=(15, 12)).float()
+            m = 10
+
+            dis1 = matrixprofile_torch_ori(A, B, m)
+            # dis2 = matrixprofile_torch(A, B, m)
+            dis2 = matrixprofile_torch_1(A, B, m)
+            print(torch.max(dis1), torch.max(dis2))
+            print(i, torch.allclose(dis1, dis2))
+    elif TEST == 2:
+        m, d = 3, 1
+        minlen, maxlen = 500, 501
+        samplenum = 2000
+        for _ in range(100):
+            samples = []
+            for _ in range(samplenum):
+                sample = np.random.randn(np.random.randint(minlen, maxlen), d)
+                samples.append(sample)
+            Ts, lengths = samples2tensor(samples)
+
+            N, D, T = Ts.shape
+            catsamples = torch.reshape(Ts.permute(0, 2, 1), (-1, D))
+            for i in range(N):
+                dis1 = matrixprofile_torch_ori(catsamples[T*i:T*(i+1)], catsamples, m)
+                dis2 = matrixprofile_torch(catsamples[T*i:T*(i+1)], catsamples, m)
+                # dis2 = matrixprofile_torch_ori_1(catsamples[T*i:T*(i+1)], catsamples, m)
+                dis2[torch.isnan(dis2)] = float('inf')
+                print(torch.max(dis1), torch.max(dis2))
+                disvalid = torch.allclose(torch.min(dis1, dim=-1)[0], torch.min(dis2, dim=-1)[0])
+                print(i, disvalid)
+                print(i, torch.allclose(torch.min(dis1, dim=-1)[1], torch.min(dis2, dim=-1)[1]))
+                print(i, torch.max(torch.abs(dis1-dis2)))
+                if not disvalid:
+                    print(torch.min(dis2, dim=-1)[0])
 

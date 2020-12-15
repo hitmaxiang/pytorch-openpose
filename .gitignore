@@ -10,4 +10,5 @@ __pycache__
 *.npy
 *.pkl
 *.rec
+*.jpg
 shapeletED.txt

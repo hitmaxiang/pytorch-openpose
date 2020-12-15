@@ -391,7 +391,7 @@ def matrixprofile_torch(sequenceA, sequenceB, m):
         offset = torch.square(sequenceA[r+m-1]-sequenceB[m:])
         offset -= torch.square(sequenceA[r-1]-sequenceB[:-m])
         offset = torch.sum(offset, axis=-1)
-        DisMat[r, 1:] = torch.sqrt(DisMat[r-1, :-1]**2+offset)
+        DisMat[r, 1:] = torch.sqrt(torch.square(DisMat[r-1, :-1])+offset)
     return DisMat
 
 
