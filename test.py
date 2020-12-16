@@ -105,11 +105,11 @@ class ShapeletMatrix():
         MinDis = torch.zeros(N, T-m_len+1, dtype=torch.float32)
         MinLoc = torch.zeros(N, T-m_len+1, dtype=torch.int16)
         # tempdis = torch.zeros(T-m_len+1, T-m_len+1)
-        MinDis1 = torch.zeros(N, T-m_len+1, dtype=torch.float32)
-        MinLoc1 = torch.zeros(N, T-m_len+1, dtype=torch.int16)
+        # MinDis1 = torch.zeros(N, T-m_len+1, dtype=torch.float32)
+        # MinLoc1 = torch.zeros(N, T-m_len+1, dtype=torch.int16)
 
-        MinDis2 = torch.zeros(N, T-m_len+1, dtype=torch.float32)
-        MinLoc2 = torch.zeros(N, T-m_len+1, dtype=torch.int16)
+        # MinDis2 = torch.zeros(N, T-m_len+1, dtype=torch.float32)
+        # MinLoc2 = torch.zeros(N, T-m_len+1, dtype=torch.int16)
 
         if torch.cuda.is_available():
             catsamples = catsamples.cuda()
@@ -117,11 +117,11 @@ class ShapeletMatrix():
             MinDis = MinDis.cuda()
             MinLoc = MinLoc.cuda()
 
-            MinDis1 = MinDis1.cuda()
-            MinLoc1 = MinLoc1.cuda()
+            # MinDis1 = MinDis1.cuda()
+            # MinLoc1 = MinLoc1.cuda()
 
-            MinDis2 = MinDis2.cuda()
-            MinLoc2 = MinLoc2.cuda()
+            # MinDis2 = MinDis2.cuda()
+            # MinLoc2 = MinLoc2.cuda()
             # tempdis = tempdis.cuda()
 
         Dis_sample = np.zeros((N, T-m_len+1))
@@ -145,10 +145,10 @@ class ShapeletMatrix():
                     m_len, 
                     DISMAT_pre[:offset[i]])
                 
-                DISMAT = matrixprofile_torch_ori(
-                    catsamples[begin:end], 
-                    catsamples, 
-                    m_len)
+                # DISMAT = matrixprofile_torch_ori(
+                #     catsamples[begin:end], 
+                #     catsamples, 
+                #     m_len)
 
                 # DISMAT_1 = utilmx.matrixprofile_torch(catsamples[begin:end], catsamples, m_len)
                 time_1 = time.time()
@@ -158,7 +158,7 @@ class ShapeletMatrix():
                     e_loc = cumlength[j+1] + shrink
                     tempdis = DISMAT_pre[:offset[i], b_loc:e_loc]
                     MinDis[j, :offset[i]], MinLoc[j, :offset[i]] = torch.min(tempdis, dim=-1)
-                    MinDis1[j, :offset[i]], MinLoc1[j, :offset[i]] = torch.min(DISMAT[:, b_loc:e_loc], dim=-1)
+                    # MinDis1[j, :offset[i]], MinLoc1[j, :offset[i]] = torch.min(DISMAT[:, b_loc:e_loc], dim=-1)
                     # MinDis2[j, :offset[i]], MinLoc2[j, :offset[i]] = torch.min(DISMAT_1[:, b_loc:e_loc], dim=-1)
 
                 # for k in range(N):
@@ -175,8 +175,8 @@ class ShapeletMatrix():
                 Dis_sample = MinDis.cpu().numpy()
                 Dis_loc = MinLoc.cpu().numpy()
 
-                Dis_sample1 = MinDis1.cpu().numpy()
-                Dis_loc1 = MinLoc1.cpu().numpy()
+                # Dis_sample1 = MinDis1.cpu().numpy()
+                # Dis_loc1 = MinLoc1.cpu().numpy()
 
                 # Dis_sample2 = MinDis2.cpu().numpy()
                 # Dis_loc2 = MinLoc2.cpu().numpy()
@@ -324,7 +324,7 @@ def Test(testcode):
         validindex = []
         query = torch.randn(real_m, d).numpy()
         for i in range(samplenum):
-            if Y[i] == 1 and np.random.rand() > 0:
+            if Y[i] == 1 and np.random.rand() > 0.5:
                 location = torch.randint(lengths[i] - real_m, size=(samplenum,))
                 validindex.append(i)
                 samples[i][location[i]:location[i]+real_m] = query + 0.1 * torch.randn(real_m, d).numpy()
