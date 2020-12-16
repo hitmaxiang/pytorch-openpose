@@ -7,6 +7,7 @@ import time
 import torch
 import joblib
 import utilmx
+import h5py
 # import torchvision
 import torch.nn.functional as F
 import numpy as np
@@ -16,7 +17,6 @@ from copy import deepcopy
 from src.model import handpose_model
 from skimage.measure import label
 from scipy.ndimage.filters import gaussian_filter
-
 
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
@@ -373,7 +373,7 @@ def CheckHandData(videopath, motiondata, handdata, recpoint):
         canvas = utilmx.draw_handpose_by_opencv(canvas, [lpeaks, rpeaks])
         # cv2.imwrite('%d.jpg' % counters, canvas)
         cv2.imshow('bodyhand', canvas)
-        q = cv2.waitKey(0) & 0xff
+        q = cv2.waitKey(30) & 0xff
         if q == ord('q'):
             break
         
@@ -383,8 +383,12 @@ def Test(code, display):
     # hand_estimation = Batch_hand_mx('../model/hand_pose_model.pth')
     hand_estimation = Batch_hand('../model/hand_pose_model.pth')
 
-    videofolder = '/home/mario/signdata/spbsl/normal'
+    # videofolder = '/home/mario/signdata/spbsl/normal'
+    videofolder = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
+
     motiondatadir = '../data/spbsl/motionsdic.pkl'
+    motionhdf5filepath = '../data/spbsl/motiondata.hdf5'
+
     Recpoint = [(700, 100), (1280, 720)]
     
     filenames = os.listdir(videofolder)
@@ -439,6 +443,27 @@ def Test(code, display):
                     handMat = joblib.load(wanthandpath)
 
                     CheckHandData(filepath, PoseMat, handMat, Recpoint)
+    
+    elif TestCode == 3:
+        # check the extracted and saved data of hdf5 format
+        # wantnum = '013'
+        # wantmotionpath = '../data/spbsl/%s.pkl' % wantnum
+        # wanthandpath = '../data/spbsl/video-%s-hand.pkl' % wantnum
+
+        np.random.shuffle(filenames)
+        motionhdf5 = h5py.File(motionhdf5filepath, 'r')
+
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1]
+            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
+                filepath = os.path.join(videofolder, filename)
+                keynum = filename[:3]
+                posekey = 'posedata/pose/%s' % keynum
+                handkey = 'handdata/hand/%s' % keynum
+                print(keynum)
+                pose = motionhdf5[posekey][:]
+                hand = motionhdf5[handkey][:]
+                CheckHandData(filepath, pose, hand, Recpoint)
 
 
 
@@ -446,11 +471,11 @@ def Test(code, display):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--testcode', type=int, help='the test code', default=2)
+    parser.add_argument('-t', '--testcode', type=int, help='the test code', default=3)
     parser.add_argument('-d', '--display', action='store_true')
     args = parser.parse_args()
 
     TestCode = args.testcode
     Display = args.display
-  
+
     Test(TestCode, Display)
