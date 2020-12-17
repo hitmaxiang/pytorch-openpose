@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-07 10:53:28
 LastEditors: mario
-LastEditTime: 2020-12-07 20:12:37
+LastEditTime: 2020-12-17 23:05:32
 '''
 import os
 import re
@@ -89,8 +89,14 @@ def SignInstancesDemons(worddictpath, subdictpath, resultspath, videodir, recpoi
         Bestshapelet = None
         for m_len in resultdict[word].keys():
             shapelet = resultdict[word][m_len][-1]
-            if Bestshapelet is None or (shapelet['accuracy'] >= Bestshapelet['accuracy']):
+            
+            if Bestshapelet is None:
                 Bestshapelet = shapelet
+            elif shapelet['accuracy'] > Bestshapelet['accuracy']:
+                Bestshapelet = shapelet
+            elif shapelet['accuracy'] == Bestshapelet['accuracy']:
+                if int(m_len) > int(Bestshapelet['m_len']):
+                    Bestshapelet = shapelet
     
         videokey = Bestshapelet['videokey']
         beginindex = Bestshapelet['beginindex']
@@ -103,7 +109,7 @@ def SignInstancesDemons(worddictpath, subdictpath, resultspath, videodir, recpoi
         VideoClips = np.zeros((sum(labels)+1, int(m_len), h, w, 3), dtype=np.uint8)
 
         tempsamples = [[videokey, beginindex, 0, 1]] + samples
-        records.insert(0, 0)
+        records = [0] + records
         
         for index, sample in enumerate(tempsamples):
             keynum, begin, end, label = sample
@@ -125,7 +131,7 @@ def SignInstancesDemons(worddictpath, subdictpath, resultspath, videodir, recpoi
                 cv2.imshow('shapelet', VideoClips[0, number])
                 cv2.imshow('instance', VideoClips[i, number])
                 q = cv2.waitKey(100) & 0xff
-                if q == ord('q') or count > 10:
+                if q == ord('q') or count >= 1:
                     break
                 number += 1
                 if number == int(m_len):
