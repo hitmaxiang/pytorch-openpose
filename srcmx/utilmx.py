@@ -377,14 +377,15 @@ def SlidingDistance_torch(pattern, sequence):
     return torch.sqrt(dist)
 
 
-def matrixprofile_torch(sequenceA, sequenceB, m):
-    l_1 = len(sequenceA)
-    l_2 = len(sequenceB)
-    DisMat = torch.zeros(l_1-m+1, l_2-m+1, dtype=torch.float32, requires_grad=False)
-    # DisMat = torch.zeros(l_1-m+1, l_2-m+1)
-    DisMat = DisMat.to(sequenceA.device)
-    # if torch.cuda.is_available():
-    #     DisMat = DisMat.cuda()
+def matrixprofile_torch(sequenceA, sequenceB, m, DisMat=None):
+    l_1, l_2 = len(sequenceA), len(sequenceB)
+    
+    if DisMat is None: 
+        DisMat = torch.zeros(l_1-m+1, l_2-m+1, dtype=torch.float32, requires_grad=False)
+        DisMat = DisMat.to(sequenceA.device)
+    else:
+        DisMat.zero_()
+
     DisMat[0, :] = SlidingDistance_torch(sequenceA[:m], sequenceB)
     DisMat[:, 0] = SlidingDistance_torch(sequenceB[:m], sequenceA)
     for r in range(1, DisMat.shape[0]):
@@ -395,7 +396,7 @@ def matrixprofile_torch(sequenceA, sequenceB, m):
     return DisMat
 
 
-class BestKItems():
+class Best_K_Items():
     # 注意 bisect 只能沿着一个方向（increase）进行排序
     def __init__(self, K, preferlarge=True):
         self.capacity = K

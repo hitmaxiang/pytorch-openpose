@@ -6,6 +6,9 @@ Date: 2020-11-27 15:51:11
 LastEditors: mario
 LastEditTime: 2020-12-09 22:17:06
 '''
+import sys
+sys.path.append('./srcmx')
+
 import scipy
 import time
 import torch
@@ -17,6 +20,7 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 from scipy import fft
 from srcmx import utilmx
+from srcmx import shapeletmodel
 from scipy.signal import convolve2d, convolve
 from sklearn.linear_model import LogisticRegression as LR
 
@@ -288,19 +292,15 @@ class ShapeletMatrix():
 
 def samples2tensor(samples):
     # samples 为样本序列，每个的格式为 T_i x D，具有不同的长度
-    # 获取
-    maxvalue = 12345
     batchsize = len(samples)
     lengths = [len(x) for x in samples]
     T, D = max(lengths), samples[0].shape[1]
 
-    # sample_tensor = torch.zeros(batchsize, D, T, dtype=torch.float32)
-    # sample_tensor[:] = torch.randint(1000, 1100, size=)
-    sample_tensor = torch.randint(20000, 30000, size=(batchsize, D, T)).float()+torch.rand(batchsize, D, T)
+    sample_tensor = torch.zeros(batchsize, D, T, dtype=torch.float32)
+    # sample_tensor[:] = float('inf')
     for i in range(batchsize):
         sample_tensor[i, :, :lengths[i]] = torch.from_numpy(samples[i]).transpose(0, 1).float()
-    
-    return sample_tensor, lengths
+    return sample_tensor
 
 
 def Test(testcode):
@@ -329,7 +329,8 @@ def Test(testcode):
                 validindex.append(i)
                 samples[i][location[i]:location[i]+real_m] = query + 0.1 * torch.randn(real_m, d).numpy()
         
-        extracter = ShapeletMatrix()
+        # extracter = ShapeletMatrix()
+        extracter = shapeletmodel.ShapeletMatrixModel()
         extracter.train(samples, Y, m)
 
         locs = extracter.locs
@@ -365,31 +366,63 @@ def Test(testcode):
                 plt.scatter([i], [dis[i].item()], c='g', marker='*')
         plt.savefig('dis-1.jpg') 
 
-    elif testcode == 1:
+    if testcode == 1:
+        m, d = 20, 24
+        samplenum = 500
+        Ts = torch.randn(samplenum, d, 500)
+        Y = torch.randint(low=0, high=2, size=(samplenum,))
+        # Y = torch.scatter(torch.zeros(samplenum, 2), 1, Y, 1.0)
+        realength = torch.randint(400, 500, size=(samplenum,))
+        # 修改一些
+        real_m = 20
+        location = torch.randint(400-real_m, size=(samplenum,))
+        query = torch.randn(d, real_m)
+        validindex = []
+        for i in range(samplenum):
+            Ts[i, :, realength[i]:] = 0
+            if Y[i] == 1 and np.random.rand() > 0.5:
+                validindex.append(i)
+                Ts[i, :, location[i]:location[i]+real_m] = query + 0.1 * torch.randn(d, real_m)
+        
+        query_default = query + torch.randn(d, real_m)
+        query_default = query_default.unsqueeze(0)
+        
+        Net = shapeletmodel.ShapeletNetModel(shape=(m, d), query=query_default)
+        # Net = shapeletmodel.ShapeletNetModel(shape=(m, d))
 
-        a = torch.randn(8, 1)
-        # a[-4:] = maxvalue
-        b = torch.randn(5, 1)
-        # b[-3:] = maxvalue
-        # b[5] = maxvalue
-        m = 3
-        l1 = len(a) - m + 1
-        l2 = len(b) - m + 1
-        dismat = torch.zeros(l1, l2)
-        c = matrixprofile_torch(a, b, m, dismat)
-        d = utilmx.matrixprofile_torch(a, b, m)
-        print(torch.allclose(c, d))
-        # print(a)
-        # print(b)
-        # print(c)
-        # print(d)
+        Net.train(Ts, Y)
+        locs, dis = Net.localizeshape(Ts)
+        shapelet = Net.getshapelet()
 
-        # print(c-d)
-        # print(d)
-        # print('the minimum is')
-        # print(torch.min(c, dim=-1))
-        # print(torch.min(d, dim=-1))
+        plt.switch_backend('agg')
+
+        plt.figure(0)
+        for i in range(samplenum):
+            if Y[i] == 1 and (i in validindex):
+                plt.plot(Ts[i, 0, locs[i]:locs[i]+m], 'b', linewidth=1)
+
+        plt.plot(shapelet[:, 0], 'r', linewidth=2)
+        plt.plot(query[0], 'g--', linewidth=2)
+        plt.title('positive')
+        plt.savefig('pos.jpg')
+
+        plt.figure(1)
+        for i in range(samplenum):
+            if Y[i] == 0:
+                plt.plot(Ts[i, 0, locs[i]:locs[i]+m], 'b', linewidth=1)
+        plt.plot(shapelet[:, 0], 'r', linewidth=2)
+        plt.plot(query[0], 'g--', linewidth=2)
+        plt.title('negative')
+        plt.savefig('neg.jpg')
+
+        plt.figure(2)
+        for i in range(samplenum):
+            if Y[i] == 1:
+                plt.scatter([i], [dis[i].item()], c='r', marker='o')
+            else:
+                plt.scatter([i], [dis[i].item()], c='g', marker='*')
+        plt.savefig('dis.jpg')
 
 
 if __name__ == "__main__":
-    Test(0)
+    Test(1)

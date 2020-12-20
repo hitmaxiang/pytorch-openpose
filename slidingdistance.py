@@ -385,7 +385,7 @@ def Test(testcode):
         print('Speedup ', (t_1 - t_0) / (t_3 - t_2))
     
     elif testcode == 3:
-        m, d = 20, 1
+        m, d = 20, 5
         samplenum = 500
         Ts = torch.randn(samplenum, d, 500)
         Y = torch.randint(low=0, high=2, size=(samplenum,))
@@ -402,7 +402,12 @@ def Test(testcode):
         query_default = query + torch.randn(d, real_m)
         query_default = query_default.unsqueeze(0)
         # Net = SlidingDisNet(shape=(m, d), query=query_default)
-        Net = SlidingDisNet(shape=(m, d))
+        # Net = SlidingDisNet(shape=(m, d))
+        import sys
+        sys.path.append('./srcmx')
+        from srcmx import shapeletmodel
+        Net = shapeletmodel.ShapeletNetModel(shape=(m, d), query=query_default)
+
         Net.train(Ts, Y)
         locs, dis = Net.localizeshape(Ts)
         shapelet = Net.getshapelet()
@@ -504,7 +509,7 @@ def Test(testcode):
         
         
 if __name__ == "__main__":
-    Test(4)
+    Test(3)
 
 
 

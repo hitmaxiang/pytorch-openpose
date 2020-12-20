@@ -1,8 +1,0 @@
-motionsdic.pkl
-006.pkl
-100.pkl
-100hand.pkl
-WordDict.pkl
-SubtitleDict.pkl
-video-013-hand.pkl
-video-091-hand.pkl

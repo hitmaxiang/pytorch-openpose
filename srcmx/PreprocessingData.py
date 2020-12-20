@@ -12,32 +12,69 @@ import sklearn.preprocessing as PP
 from sklearn.preprocessing import scale
 
 
-def MotionJointSelect(motiondata, datamode, featuremode):
+def MotionJointFeatures(motiondata, datamode=None, featuremode=0):
     '''
     description: remove the no data joint in the data
     param {type} 
     return {type} 
     author: mario
     '''
+    # TxCxD 片段的长度，节点的个数，特征的维度（2或者3）
+    T, C, D = motiondata.shape
+
+    # 为那些无效值赋值
+    motiondata = ProcessingTheNonValue(motiondata.reshape(T, -1)).reshape(T, C, D)
+
+    # 如果没有直接给出数据模式的话，可以直接根据数据的维度来进行判断
+    if datamode is None:
+        if C == 18:
+            datamode = 'pose'
+        elif C == 60:
+            datamode = 'posehand'
+        else:
+            raise Exception('please input correct datamode')
     
     # the body mode motiondata has 18 joints of the whole body
-    if datamode == 'body':
-        # let the motiondata based on the chest node position
-        for i in range(len(motiondata)):
-            motiondata[i] -= motiondata[i, 1, :]
-        
-        jointindex = [i for i in range(18)]
-        # only the upper body, is needed
-        if featuremode == 0:
-            # remove the lower-limbs joints
-            lower_limbs_joints = [8, 9, 10, 11, 12, 13]
-            for i in lower_limbs_joints:
-                jointindex.remove(i)
-        elif featuremode == 1:
-            # only upper limbs joints is provided
-            jointindex = jointindex[:8]
+
+    if featuremode == 0:
+        # 采用最为原始的方式，只选取比较有代表的节点
+        posedata = motiondata[:, :18, :2]
+        posedata -= posedata[:, 1].reshape(T, 1, -1)
+        # 只选择两个胳膊的节点作为有效的特征
+        wantchannel = [2, 3, 4, 5, 6, 7]
+        posedata = posedata[:, wantchannel]
+
+        if datamode == 'posehand':
+            # left hand
+            lefthanddata = motiondata[:, 18:18+21, :2]
+            lefthanddata -= lefthanddata[:, 0].reshape(T, 1, -1)
+            # 然后舍弃原点的数据
+            lefthanddata = lefthanddata[:, 1:]
+
+            # righ hand
+            righthanddata = motiondata[:, 18+21:, :2]
+            righthanddata -= righthanddata[:, 0].reshape(T, 1, -1)
+            # 然后舍弃原点的数据
+            righthanddata = righthanddata[:, 1:]
+
+            data = np.concatenate((posedata, lefthanddata, righthanddata), axis=1)
+        elif datamode == 'pose':
+            data = posedata
+
+    return data
     
-        return motiondata[:, jointindex, :]
+
+def ProcessingTheNonValue(datamat, mode=0):
+    # 在有关节点位置的数据有些时候是空的，所以需要补上前后的值
+    
+    if mode == 0:
+        # 无论如何，只补上前边的有效值, 如果开始就是无效值呢？
+        for c in range(datamat.shape[1]):
+            for r in range(1, datamat.shape[0]):
+                if datamat[r, c] == 0:
+                    datamat[r, c] = datamat[r-1, c]
+    
+    return datamat
 
 
 @jit
