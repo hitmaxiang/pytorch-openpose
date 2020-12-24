@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-23 15:06:20
 LastEditors: mario
-LastEditTime: 2020-12-23 20:26:44
+LastEditTime: 2020-12-24 21:43:08
 '''
 import sys
 sys.path.append('..')
@@ -18,13 +18,16 @@ from srcmx import SubtitleDict
 from threading import Thread
 
 
-class DisplayThread(QThread):
-# class DisplayThread(Thread):
+ShareImg = [0]
 
+
+class DisplayThread(QThread):
     # word, videonum, offset, length, speed, demoindex
     StatesOutSignal = Signal(str, str, str, str, str, str)
     # PaintSignal = Signal(type(np.array([])))
-    PaintSignal = Signal()
+    # length, currentindex
+    ImgDisplaySignal = Signal(int, float)
+    DisplayLengthSig = Signal(int)
     
     def __init__(self, worddictpath, subdictpath, videodir, recpoint):
         super().__init__()
@@ -40,7 +43,7 @@ class DisplayThread(QThread):
         self.random = True
         
         self.speed = 1.0
-        self.duration = 0.200
+        self.duration = 0.033
         self.working = True
         self.wordloop = True
         self.sampleloop = True
@@ -66,6 +69,22 @@ class DisplayThread(QThread):
     @Slot()
     def UpdateWord(self, word, mode):
         self.wordlist = [word]
+        self.wordloop = False
+
+    @Slot()
+    def UpdateLoopRange(self, minindex, maxindex):
+        # print('get the signal of %d--%d' % (minindex, maxindex))
+        self.minimumindex = minindex
+        self.maximumindex = maxindex
+        self.currentindex = self.minimumindex
+    
+    @Slot()
+    def NextSample(self):
+        self.displayloop = False
+    
+    @Slot()
+    def NextWord(self):
+        self.sampleloop = False
 
     def run(self):
         recpoint = self.recpoint
@@ -75,12 +94,16 @@ class DisplayThread(QThread):
             # self.wait(2000)
             print("i'm in the loop")
             time.sleep(1)
+            self.wordloop = True
             for word in self.wordlist:
                 if not self.wordloop:
                     break
+                
                 samples = self.worddict.ChooseSamples(word, 1.5)
                 counter = sum([x[-1] for x in samples])
                 number = 0
+
+                self.sampleloop = True
                 for sample in samples:
                     if not (self.wordloop and self.sampleloop):
                         break
@@ -89,6 +112,7 @@ class DisplayThread(QThread):
 
                     if label != 1:
                         continue
+                    number += 1
                     length = end - begin
                     videoclips = np.zeros((length, h, w, 3), dtype=np.uint8)
                     self.videohandledict[keynum].set(cv2.CAP_PROP_POS_FRAMES, begin)
@@ -99,13 +123,21 @@ class DisplayThread(QThread):
                     
                     # word, videonum, offset, length, speed, demoindex
                     self.StatesOutSignal.emit(word, keynum, str(begin), str(length),
-                                              'x%f' % self.speed, '%d/%d' % (number, counter))
+                                              '%.02f' % self.speed, '%d/%d' % (number, counter))
+                    self.DisplayLengthSig.emit(length)
+                    
+                    self.currentindex = 0
+                    self.displayloop = True
                     while self.displayloop and self.sampleloop and self.wordloop:
-                        if self.currentindex >= self.maximumindex:
+                        if self.currentindex >= self.maximumindex or self.currentindex < self.minimumindex:
                             self.currentindex = self.minimumindex
-                        
+                            time.sleep(0.5)
+
+                        # print(self.currentindex, self.maximumindex)
                         self.shareImg = videoclips[self.currentindex]
-                        self.PaintSignal.emit()
+                        ShareImg[0] = videoclips[self.currentindex]
+                        self.ImgDisplaySignal.emit(self.currentindex, self.speed)
+                            
                         time.sleep(self.duration/self.speed)
                         self.currentindex += 1
                             

@@ -4,11 +4,12 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-22 13:51:11
 LastEditors: mario
-LastEditTime: 2020-12-23 21:17:13
+LastEditTime: 2020-12-24 21:23:00
 '''
 import cv2
 import re, os, sys
 import numpy as np
+import DisplayThread as DH
 from DisplayThread import DisplayThread
 from PySide2 import QtCore
 from PySide2 import QtGui
@@ -81,6 +82,8 @@ class WordListDisplay(QWidget):
 
 
 class VideoPlayer(QWidget):
+    LoopIndexsignal = Signal(int, int)
+
     def __init__(self, shape=None):
         super().__init__()
         # 起始帧显示
@@ -88,6 +91,7 @@ class VideoPlayer(QWidget):
         beginlayout.addWidget(QLabel('Start index:'))
         self.startindex = QLineEdit()
         beginlayout.addWidget(self.startindex)
+        beginlayout.addStretch(1)
 
         # 起始帧滑动条
         self.Beginslider = QSlider(Qt.Horizontal)
@@ -97,6 +101,19 @@ class VideoPlayer(QWidget):
         endlayout.addWidget(QLabel('End index:'))
         self.endindex = QLineEdit()
         endlayout.addWidget(self.endindex)
+        endlayout.addStretch(1)
+        
+        # current index
+        self.speedupbtn = QPushButton('SpeedUp')
+        self.slowdownbtn = QPushButton('SlowDown')
+        displaylayout = QHBoxLayout()
+        displaylayout.addWidget(self.speedupbtn)
+        displaylayout.addStretch(1)
+        displaylayout.addWidget(QLabel('CurrentFrame：'))
+        self.currentindex = QLineEdit()
+        displaylayout.addWidget(self.currentindex)
+        displaylayout.addStretch(1)
+        displaylayout.addWidget(self.slowdownbtn)
 
         # 终止帧滑动条
         self.Endslider = QSlider(Qt.Horizontal)
@@ -108,8 +125,12 @@ class VideoPlayer(QWidget):
         vlayout = QVBoxLayout()
         vlayout.addLayout(beginlayout)
         vlayout.addWidget(self.Beginslider)
+        vlayout.addSpacing(5)
         vlayout.addLayout(endlayout)
         vlayout.addWidget(self.Endslider)
+        vlayout.addSpacing(5)
+        vlayout.addLayout(displaylayout)
+        vlayout.addSpacing(10)
         vlayout.addWidget(self.videoframe)
 
         self.setLayout(vlayout)
@@ -152,34 +173,59 @@ class VideoPlayer(QWidget):
         value = self.Endslider.value()
         self.endindex.setText(str(value))
         # other thing
+        beginvalue = self.Beginslider.value()
+        self.LoopIndexsignal.emit(min(value, beginvalue), max(value, beginvalue))
     
     @Slot()
     def Slider2Startindex(self):
         value = self.Beginslider.value()
         self.startindex.setText(str(value))
         # other thing
+        endvalue = self.Endslider.value()
+        self.LoopIndexsignal.emit(min(value, endvalue), max(value, endvalue))
 
     @Slot()
     def parametersconfig(self, shape=(320, 320), length=100):
         self.videoframe.setMinimumSize(320, 320)
         self.videoframe.setFixedSize(580, 620)
-        self.videoframe.setAttribute(Qt.WA_NoBackground)
+        # self.videoframe.setAttribute(Qt.WA_NoBackground)
+        # self.videoframe.setAttribute(Qt.WA_OpaquePaintEvent)
+        # self.videoframe.setAttribute(Qt.WA_UpdatesDisabled)
         # self.videoframe.setBackgroundRole()
         # self.videoframe.setScaledContents(True)
         self.startindex.setValidator(QtGui.QIntValidator())
         self.endindex.setValidator(QtGui.QIntValidator())
         self.Beginslider.setMaximum(length)
         self.Endslider.setMaximum(length)
+
+        self.currentindex.setReadOnly(True)
     
     @Slot()
-    def DisplayImg(self, img=None):
+    def DisplayImg(self, currentindex, img=None):
         if img is None:
-            img = Thread.shareImg
-        
+            # img = np.random.randint(0, 255, size=(580, 620, 3), dtype=np.uint8)
+            img = DH.ShareImg[0]
+            # cv2.imshow('demo', img)
+            
         height, width, depth = img.shape
+        # cv2.imshow('demo', img)
+        
+        self.currentindex.setText(str(currentindex))
         Qimg = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         Qimg = QImage(Qimg.data, width, height, width*depth, QImage.Format_RGB888)
-        self.videoframe.setPixmap(QPixmap.fromImage(Qimg)) 
+        self.videoframe.clear()
+        self.videoframe.setPixmap(QPixmap.fromImage(Qimg))
+        # self.videoframe.update()
+    
+    @Slot()
+    def updateparameters(self, length):
+        self.Beginslider.setMinimum(0)
+        self.Beginslider.setMaximum(length)
+        self.Beginslider.setValue(0)
+        
+        self.Endslider.setMinimum(0)
+        self.Endslider.setMaximum(length)
+        self.Endslider.setValue(length)
 
 
 class StatusDisplay(QWidget):
@@ -233,8 +279,8 @@ class StatusDisplay(QWidget):
         self.length.setText(str(length))
         self.speed.setText(str(speed))
         self.demoindex.setText(demoindex)
-        
-
+    
+    
 class DisPlayFrame(QWidget):
     def __init__(self, inputname):
         super().__init__()
@@ -251,34 +297,78 @@ class DisPlayFrame(QWidget):
     
 
 class MainGui(QMainWindow):
-    def __init__(self):
+    def __init__(self, worddictpath, subdictpath, videodir, recpoint):
         super().__init__()
+        # 初始化显示控件
         self.setWindowTitle('Annotation & Display system')
-        
         self.displaygui = DisPlayFrame('./wordlist.txt')
         self.setCentralWidget(self.displaygui)
+
+        # 初始化显示线程控件
+        self.displaythread = DisplayThread(worddictpath, subdictpath, videodir, recpoint)
+        self.displaythread.start()
+
+        global shareImg
+        shareImg = [0]
+        shareImg[0] = self.displaythread.shareImg
+
+        self.signalInit()
+
+    def signalInit(self):
+        self.displaythread.StatesOutSignal.connect(self.displaygui.statusdisplay.SetStatus)
+        self.displaythread.ImgDisplaySignal.connect(self.CopyImg)
+        self.displaythread.DisplayLengthSig.connect(self.displaygui.videoplayer.updateparameters)
+
+        self.displaygui.wordindex.ChooseWordSignal.connect(self.displaythread.UpdateWord)
+        self.displaygui.videoplayer.LoopIndexsignal.connect(self.displaythread.UpdateLoopRange)
+        self.displaygui.statusdisplay.add_annotation.clicked.connect(self.add_annotation_record)
+        self.displaygui.statusdisplay.nextsample.clicked.connect(self.nextsamplefunc)
+        self.displaygui.videoplayer.speedupbtn.clicked.connect(self.speedupfunc)
+        self.displaygui.videoplayer.slowdownbtn.clicked.connect(self.slowdownfunc)
+        
+    @Slot()
+    def CopyImg(self, index, speed):
+        pass
+        img = self.displaythread.shareImg
+        self.displaygui.videoplayer.DisplayImg(index, img)
+        self.displaygui.statusdisplay.speed.setText('x %.2f' % speed)
     
     @Slot()
-    def mywork(self, x, y):
-        print('%d ^2 = %d' % (x, y))
+    def add_annotation_record(self):
+        word = self.displaygui.statusdisplay.wordstr.text()
+        videokeynum = self.displaygui.statusdisplay.videokeynum.text()
+        offset = self.displaygui.statusdisplay.offset.text()
+        beginindex = self.displaygui.videoplayer.Beginslider.value()
+        endindex = self.displaygui.videoplayer.Endslider.value()
+
+        bi = min(beginindex, endindex)
+        ei = max(beginindex, endindex)
+
+        with open('./annotation.rec', 'a', encoding='utf8') as f:
+            string = '\n%s\t%s\t%s\t%d\t%d' % (word, videokeynum, offset, bi, ei)
+            f.write(string)
+    
+    @Slot()
+    def nextsamplefunc(self):
+        self.displaythread.displayloop = False
+    
+    @Slot()
+    def speedupfunc(self):
+        self.displaythread.speed = min(self.displaythread.speed+0.1, 5)
+    
+    @Slot()
+    def slowdownfunc(self):
+        self.displaythread.speed = max(self.displaythread.speed/2, 0.05)
 
 
 if __name__ == "__main__":
-    worddictpth = '../data/spbsl/WordDict.pkl'
-    subtitlepth = '../data/spbsl/SubtitleDict.pkl'
+    worddictpath = '../data/spbsl/WordDict.pkl'
+    subdictpath = '../data/spbsl/SubtitleDict.pkl'
     videodir = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
     Recpoint = [(700, 100), (1280, 720)]
-    
-    Thread = DisplayThread(worddictpth, subtitlepth, videodir, Recpoint)
     app = QApplication([])
-    GUI = MainGui()
-    Thread.start()
-    Thread.StatesOutSignal.connect(GUI.displaygui.statusdisplay.SetStatus)
-    Thread.PaintSignal.connect(GUI.displaygui.videoplayer.DisplayImg)
-    GUI.displaygui.wordindex.ChooseWordSignal.connect(Thread.UpdateWord)
-
+    GUI = MainGui(worddictpath, subdictpath, videodir, Recpoint)
     GUI.show()
-    # Thread.join()
     sys.exit(app.exec_())
 
 
