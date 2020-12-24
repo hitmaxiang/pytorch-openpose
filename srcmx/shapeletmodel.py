@@ -128,12 +128,11 @@ class ShapeletMatrixModel():
         Dis_loc = np.zeros(Dis_sample.shape, dtype=np.int16)
         dis = np.zeros((N,))
         locs = np.zeros((N,), dtype=np.int16)
-        
         for i in range(N):
             if labels[i] == 0:
                 continue
 
-            time_0 = time.time()
+            # time_0 = time.time()
             begin, end = cumlength[i:i+2]
             # end = T * (i+1)
             with torch.no_grad():
@@ -143,7 +142,7 @@ class ShapeletMatrixModel():
                     m_len, 
                     DISMAT_pre[:offset[i]])
 
-                time_1 = time.time()
+                # time_1 = time.time()
 
                 for j in range(N):
                     b_loc = cumlength[j]
@@ -170,10 +169,9 @@ class ShapeletMatrixModel():
                     bestloss = loss
                     dis[:] = Dis_sample[:, candin_index]
                     locs[:] = Dis_loc[:, candin_index]
-            time_2 = time.time()
-            print('%f----%f' % (time_1-time_0, time_2-time_1))
-            print('%d/%d--->loss: %f, accuracy: %f' % (i, N, bestloss, bestscore))
-
+            # time_2 = time.time()
+            # print('%f----%f' % (time_1-time_0, time_2-time_1))
+            # print('%d/%d--->loss: %f, accuracy: %f' % (i, N, bestloss, bestscore))
         self.shapeindex = shapeindex
         self.locs = locs
         self.dis = dis

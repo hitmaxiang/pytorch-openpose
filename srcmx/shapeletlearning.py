@@ -6,6 +6,7 @@ Date: 2020-09-24 16:25:13
 LastEditors: mario
 LastEditTime: 2020-12-07 20:45:15
 '''
+import os
 import time
 import utilmx
 import joblib
@@ -58,29 +59,40 @@ class ShapeletsFinding():
         return samples, sample_indexes
     
     def train(self, word=None, method=2):
+
+        if method == 1:
+            self.recodfilepath = '../data/spbsl/shapeletNetED.rec'
+        elif method == 2:
+            self.recodfilepath = '../data/spbsl/shapeletED.rec'
+        else:
+            self.recodfilepath = '../data/spbsl/shapeletany.rec'
         if word is None:
             words = self.cls_worddict.worddict.keys()
         elif isinstance(word, str):
             words = [word]
         elif isinstance(word, list):
             words = word
-        
-        # trainedrecords = utilmx.ReadShapeletRecords('../data/spbsl/shapeletED.rec')
+        minlen, maxlen, stride = 10, 30, 3
+
+        if os.path.exists(self.recodfilepath):
+            trainedrecords = utilmx.ReadShapeletRecords(self.recodfilepath)
+        else:
+            trainedrecords = []
 
         for word in words:
-            # # 现阶段，对于sample特别多的先不分析
-            # if len(self.cls_worddict.worddict[word]) >= 500:
-            #     continue
-            # if word in trainedrecords.keys():
-            #     if len(trainedrecords[word]) == 26:
-            #         continue
+            # 现阶段，对于sample特别多的先不分析
+            if len(self.cls_worddict.worddict[word]) >= 500:
+                continue
+            if word in trainedrecords.keys():
+                if len(trainedrecords[word]) >= int((maxlen-minlen)/stride):
+                    continue
             self.word = word
             samples, sample_indexes = self.Getsamples(word)
             
-            for m in range(10, 25):
-                # if word in trainedrecords.keys():
-                #     if m in trainedrecords[word]:
-                #         continue
+            for m in range(minlen, maxlen, stride):
+                if word in trainedrecords.keys():
+                    if m in trainedrecords[word]:
+                        continue
                 if method == 0:
                     # self.FindShaplets_dtw_methods(samples, sample_indexes, m)
 
@@ -94,7 +106,7 @@ class ShapeletsFinding():
     
     def FindShaplets_brute_force_ED(self, samples, sample_indexes, m_len):
         
-        # begin_time = time.time()
+        begin_time = time.time()
         shapeletmodel = SM.ShapeletMatrixModel()
         BestKshapelets = utilmx.Best_K_Items(K=10)
 
@@ -118,19 +130,24 @@ class ShapeletsFinding():
         BestKshapelets.insert(score, [key, locs])
         # shapelet = samples[shapindex][locs[shapindex]:locs[shapindex]+m_len, 0]
         Headerinfo = 'the word:%s with m length: %d' % (self.word, m_len)
-        BestKshapelets.wirteinfo(Headerinfo, '../data/spbsl/shapeletED.rec', 'a')
+        BestKshapelets.wirteinfo(Headerinfo, self.recodfilepath, 'a')
 
-        samplenum = len(samples)
-        Y = [x[-1] for x in sample_indexes]
-        plt.switch_backend('agg')
+        # samplenum = len(samples)
+        # Y = [x[-1] for x in sample_indexes]
+        # plt.switch_backend('agg')
 
-        plt.figure(0)
-        for i in range(samplenum):
-            if Y[i] == 1:
-                plt.scatter([i], [dis[i].item()], c='r', marker='o')
-            else:
-                plt.scatter([i], [dis[i].item()], c='g', marker='*')
-        plt.savefig('../data/spbsl/img/%s-%d-dis.jpg' % (self.word, m_len))
+        # plt.figure(0)
+        # for i in range(samplenum):
+        #     if Y[i] == 1:
+        #         plt.scatter([i], [dis[i].item()], c='r', marker='o')
+        #     else:
+        #         plt.scatter([i], [dis[i].item()], c='g', marker='*')
+        # plt.savefig('../data/spbsl/img/%s-%d-dis.jpg' % (self.word, m_len))
+        print('the %d word %s of %d length cost %f seconds with score %f' % (len(samples)//2,
+                                                                             self.word,
+                                                                             m_len,
+                                                                             time.time()-begin_time,
+                                                                             score))
 
     def FindShaplets_Net_ED(self, samples, sample_indexes, m_len):
         # 对样本集合进行归一化处理
@@ -172,7 +189,7 @@ class ShapeletsFinding():
             BestKshapelets.insert(score, [key, locs])
             # shapelet = samples[shapindex][locs[shapindex]:locs[shapindex]+m_len, 0]
             Headerinfo = 'the word:%s with m length: %d' % (self.word, m_len)
-            BestKshapelets.wirteinfo(Headerinfo, '../data/spbsl/shapeletNetED.rec', 'a')
+            BestKshapelets.wirteinfo(Headerinfo, self.recodfilepath, 'a')
 
         
 def Test(testcode):
@@ -184,8 +201,8 @@ def Test(testcode):
     if testcode == 0:
         cls_shapelet = ShapeletsFinding(motionhdf5filepath, worddictpath, subtitledictpath)
         # consider: 500, thank:2153, supermarket:60, weekend: 76, expert: 99
-        cls_shapelet.train('expert', method=1)
-        # cls_shapelet.train(method=2)
+        # cls_shapelet.train('expert', method=1)
+        cls_shapelet.train(method=2)
 
         
 if __name__ == "__main__":
