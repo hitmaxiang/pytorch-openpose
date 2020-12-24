@@ -138,12 +138,30 @@ def SignInstancesDemons(worddictpath, subdictpath, resultspath, videodir, recpoi
                     count += 1                     
 
 
-if __name__ == "__main__":
-    # ReadShapeletReccords('../data/spbsl/shapeletED.rec')
+def RunTest(testcode, server):
+    # 定义一些常用的文件路径
     worddictpth = '../data/spbsl/WordDict.pkl'
     subtitlepth = '../data/spbsl/SubtitleDict.pkl'
-    videodir = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
-    resultspth = '../data/spbsl/shapeletED.rec'
     Recpoint = [(700, 100), (1280, 720)]
 
-    SignInstancesDemons(worddictpth, subtitlepth, resultspth, videodir, Recpoint)
+    if server:
+        videodir = '/home/mario/signdata/spbsl/normal'
+    else:
+        videodir = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
+
+    resultspth = '../data/spbsl/shapeletED.rec'
+
+    if testcode == 0:
+        SignInstancesDemons(worddictpth, subtitlepth, resultspth, videodir, Recpoint)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-t', '--testcode', type=int, help='the test code', default=0)
+    parser.add_argument('-s', '--server', action='store_false')
+    args = parser.parse_args()
+
+    testcode = args.testcode
+    server = args.server
+
+    RunTest(testcode, server)

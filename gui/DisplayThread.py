@@ -38,12 +38,17 @@ class DisplayThread(QThread):
         # control variables
         self.wordlist = ['supermarket']
         self.random = True
-        self.number = 10
-        self.displaying = False
-        self.working = True
+        
         self.speed = 1.0
         self.duration = 0.200
-        self.loop = True
+        self.working = True
+        self.wordloop = True
+        self.sampleloop = True
+        self.displayloop = True
+
+        self.maximumindex = 0
+        self.minimumindex = 0
+        self.currentindex = 0
 
         # share img
         h, w = recpoint[1][1] - recpoint[0][1], recpoint[1][0] - recpoint[0][0]
@@ -71,14 +76,15 @@ class DisplayThread(QThread):
             print("i'm in the loop")
             time.sleep(1)
             for word in self.wordlist:
-                # # 判断选定单词是否在其中
-                # if word not in self.worddict.keys():
-                #     continue
-
+                if not self.wordloop:
+                    break
                 samples = self.worddict.ChooseSamples(word, 1.5)
                 counter = sum([x[-1] for x in samples])
                 number = 0
                 for sample in samples:
+                    if not (self.wordloop and self.sampleloop):
+                        break
+
                     keynum, begin, end, label = sample
 
                     if label != 1:
@@ -94,10 +100,12 @@ class DisplayThread(QThread):
                     # word, videonum, offset, length, speed, demoindex
                     self.StatesOutSignal.emit(word, keynum, str(begin), str(length),
                                               'x%f' % self.speed, '%d/%d' % (number, counter))
-                    while self.loop:
-                        print('i am in the display loop')
-                        for i in range(length):
-                            # self.gui.displaygui.videoplayer.DisplayImg(videoclips[i])
-                            self.shareImg = videoclips[i]
-                            self.PaintSignal.emit()
-                            time.sleep(self.duration/self.speed)
+                    while self.displayloop and self.sampleloop and self.wordloop:
+                        if self.currentindex >= self.maximumindex:
+                            self.currentindex = self.minimumindex
+                        
+                        self.shareImg = videoclips[self.currentindex]
+                        self.PaintSignal.emit()
+                        time.sleep(self.duration/self.speed)
+                        self.currentindex += 1
+                            
