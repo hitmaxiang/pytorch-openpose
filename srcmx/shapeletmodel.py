@@ -47,14 +47,14 @@ class ShapeletNetModel(nn.Module):
             Y_e, meadis = self.forward(X, Y)
             # loss = self.loss_fn(Y_e, Y) + meadis
             loss = self.loss_fn(Y_e, Y)
-            # if loss.item() > temploss:
-            #     if counter > 1000:
-            #         break
-            #     else:
-            #         counter += 1
-            # else:
-            #     temploss = loss.item()
-            #     counter = 0
+            if loss.item() > temploss:
+                if counter > 100:
+                    break
+                else:
+                    counter += 1
+            else:
+                temploss = loss.item()
+                counter = 0
 
             self.optimer.zero_grad()
             loss.backward()

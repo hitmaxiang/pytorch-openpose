@@ -9,12 +9,48 @@ LastEditTime: 2020-12-25 22:53:57
 
 import os
 import cv2
+import utilmx
+import h5py
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt 
 
+from copy import deepcopy
 
-def Get3Dthumbnails(videopath, frames, outname, fx=1, rec=None):
+
+def ConstructImageStack(images, outname, shift=10):
+
+    N, H, W = images.shape[:3]
+    x = np.arange(0, W)
+    z = np.arange(0, H)
+
+    X, Z = np.meshgrid(x, z)
+
+    plt.switch_backend('agg')
+    fig = plt.figure(figsize=(15, 15))
+    ax = fig.gca(projection='3d')
+
+    Y = np.zeros_like(X)
+
+    for i in range(N):
+        # 归一化转化为【0-1】颜色
+        colormat = np.reshape(images[i], (-1, 3))/255.0
+        stride = shift * i
+        ax.scatter(X + stride, Y + stride, Z + stride, c=colormat, s=0.5)
+
+    ax.grid(None)
+    # print('elev %f' % ax.elev)
+    # print('azim %f' % ax.azim)
+    # elev 表示 z 的 rotation，默认是向下低头 30（30）
+    # zim 表示 xy 面的 rotation， 默然是向 左旋转 30 （即-60），
+    ax.view_init(elev=15, azim=-75)
+    plt.axis('off')
+    plt.savefig(outname)
+    print('the fig %s is saved!' % outname)
+    # plt.show()
+
+
+def GetRandomImages_from_video(videopath, frames, rec=None, fx=1):
     if os.path.exists(videopath):
         video = cv2.VideoCapture(videopath)
         Count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -31,61 +67,139 @@ def Get3Dthumbnails(videopath, frames, outname, fx=1, rec=None):
             images.append(img)
         images = np.array(images)
         video.release()
-    else:
-        images = np.random.rand(frames, 320, 160, 3)
     
-    N, H, W = images.shape[:3]
-    x = np.arange(0, W)
-    z = np.arange(0, H)
-
-    X, Z = np.meshgrid(x, z)
-
-    fig = plt.figure(figsize=(15, 15))
-    ax = fig.gca(projection='3d')
-
-    Y = np.zeros_like(X)
-
-    offset = 8
-    for i in range(frames):
-        # 归一化转化为【0-1】颜色
-        colormat = np.reshape(images[i], (-1, 3))/255.0
-        # 
-        stride = offset * i
-        ax.scatter(X + stride, Y + stride, Z + stride, c=colormat, s=0.5)
-
-    ax.grid(None)
-    print('elev %f' % ax.elev)
-    print('azim %f' % ax.azim)
-    # elev 表示 z 的 rotation，默认是向下低头 30（30）
-    # zim 表示 xy 面的 rotation， 默然是向 左旋转 30 （即-60），
-    ax.view_init(elev=15, azim=-75)
-    plt.axis('off')
-    plt.savefig(outname)
-    plt.show()
+        return images
 
 
+def GetrandomImages_from_video_with_skeleton(videopath, posedata, handdata, framnum, rec):
+    if os.path.exists(videopath):
+        video = cv2.VideoCapture(videopath)
+        Count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        indexes = np.random.randint(Count, size=(framnum,))
+
+        images = []
+        origimgs = []
+        
+        for index in indexes:
+            video.set(cv2.CAP_PROP_POS_FRAMES, index)
+            _, img = video.read()
+            img = img[rec[0][1]:rec[1][1], rec[0][0]:rec[1][0], :]
+
+            origimg = deepcopy(img)
+            origimg = cv2.cvtColor(origimg, cv2.COLOR_BGR2RGB)  # 转化为 RGB 颜色空间
+            origimg = cv2.flip(origimg, 0)  # 垂直翻转
+            origimgs.append(deepcopy(origimg))
+
+            img = utilmx.DrawPose(img, posedata[index], handdata[index])
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # 转化为 RGB 颜色空间
+            img = cv2.flip(img, 0)  # 垂直翻转
+            images.append(img)
+        
+        return np.array(origimgs), np.array(images)
+
+
+def GetRandomImages_of_skeleton(motion_dictpath, framnum, shape):
+    h5file = h5py.File(motion_dictpath, mode='r')
+    while True:
+        videokey = '%03d' % (np.random.randint(100))
+        posekey = 'posedata/pose/%s' % videokey
+        handkey = 'handdata/hand/%s' % videokey
+
+        if posekey in h5file and handkey in h5file:
+            posedata = h5file[posekey]
+            handdata = h5file[handkey]
+            break
+    
+    Count = len(posedata)
+    indexes = np.random.randint(Count, size=(framnum,))
+    
+    images = []
+    for i in indexes:
+        img = np.zeros(shape + (3,), dtype=np.uint8)
+        # set the background (BGR order)
+        img[:, :, 0] = 105
+        img[:, :, 1] = 118
+        img[:, :, 2] = 128
+        img = utilmx.DrawPose(img, posedata[i], handdata[i])
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # 转化为 RGB 颜色空间
+        img = cv2.flip(img, 0)  # 垂直翻转
+        images.append(img)
+    
+    return np.array(images)
+
+        
 def RunTest(testcode, server):
     if server:
         videodir = '/home/mario/signdata/spbsl/normal'
     else:
         videodir = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
-    
+
+    motion_dictpath = '../data/spbsl/motiondata.hdf5'
+    imgfolder = '../data/img'
     Recpoint = [(700, 100), (1280, 720)]
     
     if testcode == 0:
+        # get the 3D thumbnails of the video frames
+        getnum, framenum = 5, 5
         filenames = os.listdir(videodir)
         for filename in filenames:
             ext = os.path.splitext(filename)[1]
             if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
                 videopath = os.path.join(videodir, filename)
-                Get3Dthumbnails(videopath, 25, '../data/img/videothumbnail.jpg', rec=Recpoint)
+                for i in range(getnum):
+                    outname = 'videothumb_%d_%d.jpg' % (framenum, i)
+                    outpath = os.path.join(imgfolder, outname)
+                    samples = GetRandomImages_from_video(videopath, framenum, Recpoint)
+                    ConstructImageStack(samples, outpath)
                 break  # only onetime
     
+    elif testcode == 1:
+        # save the 3D thumbnails of the skeleton frames
+        getnum, framenum = 10, 5
+        imgshape = (Recpoint[1][1] - Recpoint[0][1], Recpoint[1][0] - Recpoint[0][0])
+        for i in range(getnum):
+            outname = 'skeletonthumb_%d_%d.jpg' % (framenum, i)
+            outpath = os.path.join(imgfolder, outname)
+            samples = GetRandomImages_of_skeleton(motion_dictpath, framenum, imgshape)
+            ConstructImageStack(samples, outpath)
+    
+    elif testcode == 2:
+        # save the 3D thumbnails of the video and skeleton
+        getnum, framenum, shift = 6, 5, 10
+        filenames = os.listdir(videodir)
 
+        motionh5file = h5py.File(motion_dictpath, 'r')
+
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1]
+            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
+                videopath = os.path.join(videodir, filename)
+
+                videokey = filename[:3]
+                posekey = 'posedata/pose/%s' % videokey
+                handkey = 'handdata/hand/%s' % videokey
+
+                posedata = motionh5file[posekey]
+                handdata = motionh5file[handkey]
+
+                for i in range(getnum):
+                    outname = 'videothumb_%d_%d.jpg' % (framenum, i)
+                    outpath = os.path.join(imgfolder, outname)
+                    orisamples, samples = GetrandomImages_from_video_with_skeleton(
+                        videopath, posedata=posedata, handdata=handdata, framnum=framenum, rec=Recpoint)
+                    
+                    ConstructImageStack(orisamples, outpath, shift)
+
+                    comname = 'combthumb_%d_%d.jpg' % (framenum, i)
+                    comname = os.path.join(imgfolder, comname)
+                    ConstructImageStack(samples, comname, shift)
+                break  # only onetime
+        
+    
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=0)
-    Parser.add_argument('-s', '--server', action='store_true')
+    Parser.add_argument('-t', '--testcode', type=int, default=2)
+    Parser.add_argument('-s', '--server', action='store_false')
 
     args = Parser.parse_args()
     testcode = args.testcode

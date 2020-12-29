@@ -6,6 +6,9 @@ Date: 2020-08-27 20:41:43
 LastEditors: mario
 LastEditTime: 2020-11-02 16:35:50
 '''
+import sys
+sys.path.append('..')
+
 import os
 import re
 import math
@@ -17,6 +20,7 @@ import matplotlib
 import numpy as np
 import torch.nn.functional as F
 
+from src import util
 from torch import nn
 from tslearn import metrics
 from scipy.io import loadmat
@@ -259,7 +263,6 @@ class GaussianBlurConv(nn.Module):
 
 
 # detect hand according to body pose keypoints
-# please refer to https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/src/openpose/hand/handDetector.cpp
 def handDetect(candidate, subset, img_shape):
     # right hand: wrist 4, elbow 3, shoulder 2
     # left hand: wrist 7, elbow 6, shoulder 5
@@ -289,12 +292,7 @@ def handDetect(candidate, subset, img_shape):
             hands.append([x1, y1, x2, y2, x3, y3, False])
 
         for x1, y1, x2, y2, x3, y3, is_left in hands:
-            # pos_hand = pos_wrist + ratio * (pos_wrist - pos_elbox) = (1 + ratio) * pos_wrist - ratio * pos_elbox
-            # handRectangle.x = posePtr[wrist*3] + ratioWristElbow * (posePtr[wrist*3] - posePtr[elbow*3]);
-            # handRectangle.y = posePtr[wrist*3+1] + ratioWristElbow * (posePtr[wrist*3+1] - posePtr[elbow*3+1]);
-            # const auto distanceWristElbow = getDistance(poseKeypoints, person, wrist, elbow);
-            # const auto distanceElbowShoulder = getDistance(poseKeypoints, person, elbow, shoulder);
-            # handRectangle.width = 1.5f * fastMax(distanceWristElbow, 0.9f * distanceElbowShoulder);
+
             x = x3 + ratioWristElbow * (x3 - x2)
             y = y3 + ratioWristElbow * (y3 - y2)
             distanceWristElbow = math.sqrt((x3 - x2) ** 2 + (y3 - y2) ** 2)
@@ -303,8 +301,6 @@ def handDetect(candidate, subset, img_shape):
             width = 1.5 * max(distanceWristElbow, 0.9 * distanceElbowShoulder)
             
             # x-y refers to the center --> offset to topLeft point
-            # handRectangle.x -= handRectangle.width / 2.f;
-            # handRectangle.y -= handRectangle.height / 2.f;
             x -= width / 2
             y -= width / 2  # width = height
             # overflow the image
@@ -320,8 +316,6 @@ def handDetect(candidate, subset, img_shape):
                 width2 = image_height - y
             width = min(width1, width2)
             # the max hand box value is 20 pixels
-            # if width >= 20:
-            #   detect_result.append([int(x), int(y), int(width), is_left])
             detect_result.append([int(x), int(y), int(width), is_left])
 
     '''
@@ -455,6 +449,94 @@ def ReadShapeletRecords(inputfile):
     return record
 
 
+class ShapeletRecords():
+    def __init__(self):
+        self.head_pattern = r'header:the word:(.+) with m length:\s*(\d+)$'
+        self.recordItem_pattern = r'(\d+)-framindex:(\d+)-offset:(\d+)-m_len:(\d+)--(\d.\d+)$'
+        self.data_pattern = r'^(\t*\d+\t*)+$'
+
+    def ReadRecordInfo(self, recodfile):
+        with open(recodfile, 'r') as f:
+            lines = f.readlines()
+        
+        recorddict = {}
+        word = None
+        for text in lines:
+            if text.strip() == '':
+                continue
+
+            # 提取 Header info
+            headinf = re.findall(self.head_pattern, text)
+            if len(headinf) != 0:
+                word = headinf[0][0]
+                m_len = headinf[0][1]
+
+                if word not in recorddict.keys():
+                    recorddict[word] = {}
+                
+                if m_len not in recorddict[word].keys():
+                    recorddict[word][m_len] = {}
+                    recorddict[word][m_len]['num'] = 0
+                    recorddict[word][m_len]['shapelet'] = []
+                    recorddict[word][m_len]['loc'] = []
+                continue
+
+            # 提取 shapelet info
+            shapeinfo = re.findall(self.recordItem_pattern, text)
+            if len(shapeinfo) != 0:
+                videokey = shapeinfo[0][0]
+                frameindex = int(shapeinfo[0][1])
+                offset = int(shapeinfo[0][2])
+                length = int(shapeinfo[0][3])
+                score = float(shapeinfo[0][4])
+
+                shapelet = (videokey, frameindex, offset, length, score)
+
+                # continue
+
+            # 提取数据
+            datainfo = re.search(self.data_pattern, text)
+            if datainfo is not None:
+                data = text.strip().split()
+                data = [int(d) for d in data]
+                recorddict[word][m_len]['num'] += 1
+                recorddict[word][m_len]['shapelet'].append(shapelet)
+                recorddict[word][m_len]['loc'].append(data)
+        
+        self.recorddict = recorddict
+
+        return recorddict
+        
+
+def DrawPose(img, bodypose=None, handpeaks=None):
+    '''
+    description: display the posedata in the img
+    param:
+        img: BGR image data
+        posed: the joint position of the skeleton or hands
+        mode: the type of the motion data
+    return {type} 
+    author: mario
+    '''
+    if bodypose is not None:
+        subset = np.zeros((1, 20))
+        candidate = np.zeros((20, 4))
+        for i in range(18):
+            if sum(bodypose[i, :]) == 0:
+                subset[0, i] = -1
+            else:
+                subset[0, i] = i
+            candidate[i, :2] = bodypose[i, :2]
+        img = util.draw_bodypose(img, candidate, subset)
+        
+    if handpeaks is not None:
+        handpeaks = handpeaks[:, :2]
+        handpeaks = np.reshape(handpeaks, (2, -1, 2))
+        img = draw_handpose_by_opencv(img, handpeaks)
+
+    return img
+
+
 if __name__ == "__main__":
     import time
 
@@ -481,4 +563,5 @@ if __name__ == "__main__":
         print('Orig %0.3f ms, second approach %0.3f ms' % ((t1 - t) * 1000., (t2 - t1) * 1000.))
         print('Speedup ', (t1 - t) / (t2 - t1))
     elif Testcode == 2:
-        ReadShapeletRecords('../data/spbsl/shapeletED.txt')
+        # ReadShapeletRecords('../data/spbsl/shapeletED.txt')
+        ShapeletRecords().ReadRecordInfo('../data/spbsl/shapeletED.rec')

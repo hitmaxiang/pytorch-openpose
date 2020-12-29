@@ -61,6 +61,7 @@ class ShapeletsFinding():
     def train(self, word=None, method=2):
 
         if method == 1:
+            self.current_shapelet_dict = utilmx.ShapeletRecords().ReadRecordInfo('../data/spbsl/shapeletED.rec')
             self.recodfilepath = '../data/spbsl/shapeletNetED.rec'
         elif method == 2:
             self.recodfilepath = '../data/spbsl/shapeletED.rec'
@@ -162,10 +163,31 @@ class ShapeletsFinding():
         for i in range(N):
             X[i, :, :lenghts[i]] = torch.from_numpy(samples[i]).permute(1, 0)
         Y = torch.tensor([x[-1] for x in sample_indexes])
+        
+        # Set the default query
+        valid = False
+        try:
+            shapelet = self.current_shapelet_dict[self.word][str(m_len)]['shapelet']
+            videonum, frameindex, offset, length, score = shapelet[0]
 
-        bindex = 127
+            for i in range(len(sample_indexes)):
+                if sample_indexes[i][-1] == 1:
+                    videokey, beginindex = sample_indexes[i][:2]
+                    if videokey == videonum and beginindex == frameindex:
+                        print('the default shapelt will be initialized with the record')
+                        valid = True
+                        break
+        except Exception:
+            print('the %s is not in the shapeletED record')
+        if valid is True:
+            index = i
+            bindex = offset
+        else:
+            index = 0
+            bindex = 127
+        
         eindex = bindex + m_len
-        default_query = X[0, :, bindex:eindex].unsqueeze(0)
+        default_query = X[index, :, bindex:eindex].unsqueeze(0)
         Net = SM.ShapeletNetModel(shape=(m_len, D), query=default_query)
         if torch.cuda.is_available():
             X = X.cuda()
@@ -201,8 +223,8 @@ def Test(testcode):
     if testcode == 0:
         cls_shapelet = ShapeletsFinding(motionhdf5filepath, worddictpath, subtitledictpath)
         # consider: 500, thank:2153, supermarket:60, weekend: 76, expert: 99
-        # cls_shapelet.train('expert', method=1)
-        cls_shapelet.train(method=2)
+        # cls_shapelet.train('supermarket', method=1)
+        cls_shapelet.train(method=1)
 
         
 if __name__ == "__main__":
