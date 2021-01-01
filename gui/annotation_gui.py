@@ -4,11 +4,13 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-22 13:51:11
 LastEditors: mario
-LastEditTime: 2020-12-24 21:23:00
+LastEditTime: 2021-01-01 22:51:17
 '''
 import cv2
+import h5py
 import re, os, sys
 import numpy as np
+import configparser
 import DisplayThread as DH
 from DisplayThread import DisplayThread
 from PySide2 import QtCore
@@ -299,6 +301,9 @@ class DisPlayFrame(QWidget):
 class MainGui(QMainWindow):
     def __init__(self, worddictpath, subdictpath, videodir, recpoint):
         super().__init__()
+        # 读取初始化参数
+        self.StateInit()
+        
         # 初始化显示控件
         self.setWindowTitle('Annotation & Display system')
         self.displaygui = DisPlayFrame('./wordlist.txt')
@@ -325,6 +330,15 @@ class MainGui(QMainWindow):
         self.displaygui.statusdisplay.nextsample.clicked.connect(self.nextsamplefunc)
         self.displaygui.videoplayer.speedupbtn.clicked.connect(self.speedupfunc)
         self.displaygui.videoplayer.slowdownbtn.clicked.connect(self.slowdownfunc)
+    
+    def StateInit(self):
+        config = configparser.ConfigParser()
+        config.read('./config.ini')
+        filename = config['DEFAULT']['recordfile'] 
+
+        # 读取 annotation 文件
+        self.annotation = h5py.File(filename, mode='a')
+
         
     @Slot()
     def CopyImg(self, index, speed):
