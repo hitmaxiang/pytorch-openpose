@@ -75,7 +75,7 @@ class DisplayThread(QThread):
     def UpdateLoopRange(self, minindex, maxindex):
         # print('get the signal of %d--%d' % (minindex, maxindex))
         self.minimumindex = minindex
-        self.maximumindex = maxindex
+        self.maximumindex = maxindex 
         self.currentindex = self.minimumindex
     
     @Slot()
