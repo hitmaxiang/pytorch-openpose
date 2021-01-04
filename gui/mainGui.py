@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2021-01-02 21:47:05
 LastEditors: mario
-LastEditTime: 2021-01-03 08:07:10
+LastEditTime: 2021-01-04 15:00:20
 '''
 import re
 import os
@@ -91,6 +91,7 @@ class MainWindow(QMainWindow):
         wordlist.sort()
         self.DisplayWordList(wordlist)
         self.wordlist = wordlist
+        self.VideoThread.wordlist = wordlist
         
     @Slot()
     def FilterWordList(self, pattern):
@@ -136,7 +137,7 @@ class MainWindow(QMainWindow):
         self.ui.videolabel.setPixmap(QPixmap.fromImage(img))
 
     @Slot()
-    def UpdateDisplayparams(self, word, videonum, offset, length, speed, demoindex):
+    def UpdateDisplayparams(self, word, videonum, offset, length, demoindex):
         self.ui.word_text.setText(word)
         self.ui.videokey_text.setText(videonum)
         self.ui.offset_text.setText(offset)
@@ -240,6 +241,16 @@ class MainWindow(QMainWindow):
         elif orien == -1:
             self.VideoThread.speed = max(self.VideoThread.speed/2, 0.05)
 
+    @Slot()
+    def closeEvent(self, event):
+        magbox = QMessageBox.question
+        reply = magbox(self, '警告', '系统将退出，是否确认', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            event.accept()
+            self.h5record.close()
+        else:
+            event.ignore()
 
 if __name__ == "__main__":
 

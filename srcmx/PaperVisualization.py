@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-25 17:55:59
 LastEditors: mario
-LastEditTime: 2020-12-25 22:53:57
+LastEditTime: 2021-01-04 20:57:06
 '''
 
 import os
@@ -156,8 +156,29 @@ def WordFreqStatistics(recordfile, wordlistfile, wantnum):
     plt.switch_backend('agg')
     plt.hist(counter, bins=20)
     plt.savefig('../data/img/wordinfofreq.jpg')
+
+
+def ChooseAnnotatedWordFromRecord(recordfile, outname, thre=20, number=1000):
+    recordinfodict = utilmx.ShapeletRecords().ReadRecordInfo(recordfile)
+    wordlist = []
     
-        
+    for word in recordinfodict.keys():
+        bestscore = 0
+        for m_len in recordinfodict[word].keys():
+            for shapelet in recordinfodict[word][m_len]['shapelet']:
+                bestscore = max(bestscore, shapelet[-1])
+        if len(recordinfodict[word][m_len]['loc'][0]) >= thre * 2:
+            wordlist.append([word, bestscore])
+
+    wordlist.sort(key=lambda item: item[-1], reverse=True)
+
+    chooseword = [x[0] for x in wordlist[:min(len(wordlist), number)]]
+    
+    with open(outname, 'w') as f:
+        for word in chooseword:
+            f.write('%s\n' % word)
+
+
 def RunTest(testcode, server):
     if server:
         videodir = '/home/mario/signdata/spbsl/normal'
@@ -229,12 +250,18 @@ def RunTest(testcode, server):
         recordfile = '../data/spbsl/shapeletED.rec'
         wordinfo = '../data/spbsl/wordinfo.txt'
         WordFreqStatistics(recordfile, wordinfo, 1000)
+    
+    elif testcode == 4:
+        recordfile = '../data/spbsl/shapeletED.rec'
+        wordlist = '../gui/wordlist.txt'
+
+        ChooseAnnotatedWordFromRecord(recordfile, wordlist)
         
     
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=3)
-    Parser.add_argument('-s', '--server', action='store_false')
+    Parser.add_argument('-t', '--testcode', type=int, default=4)
+    Parser.add_argument('-s', '--server', action='store_true')
 
     args = Parser.parse_args()
     testcode = args.testcode

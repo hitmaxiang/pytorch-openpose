@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-23 15:06:20
 LastEditors: mario
-LastEditTime: 2020-12-24 21:43:08
+LastEditTime: 2021-01-04 15:01:30
 '''
 import sys
 sys.path.append('..')
@@ -22,12 +22,10 @@ ShareImg = [0]
 
 
 class DisplayThread(QThread):
-    # word, videonum, offset, length, speed, demoindex
-    StatesOutSignal = Signal(str, str, str, str, str, str)
-    # PaintSignal = Signal(type(np.array([])))
-    # length, currentindex
+    # word, videonum, offset, length, demoindex
+    StatesOutSignal = Signal(str, str, str, str, str)
+    # currentindex, speed
     ImgDisplaySignal = Signal(int, float)
-    DisplayLengthSig = Signal(int)
     
     def __init__(self, worddictpath, subdictpath, videodir, recpoint):
         super().__init__()
@@ -39,7 +37,7 @@ class DisplayThread(QThread):
         # self.gui = gui
 
         # control variables
-        self.wordlist = ['supermarket']
+        self.wordlist = []
         self.random = True
         
         self.speed = 1.0
@@ -75,7 +73,7 @@ class DisplayThread(QThread):
     def UpdateLoopRange(self, minindex, maxindex):
         # print('get the signal of %d--%d' % (minindex, maxindex))
         self.minimumindex = minindex
-        self.maximumindex = maxindex 
+        self.maximumindex = maxindex
         self.currentindex = self.minimumindex
     
     @Slot()
@@ -92,7 +90,7 @@ class DisplayThread(QThread):
 
         while self.working:
             # self.wait(2000)
-            print("i'm in the loop")
+            # print("i'm in the loop")
             time.sleep(1)
             self.wordloop = True
             for word in self.wordlist:
@@ -122,10 +120,7 @@ class DisplayThread(QThread):
                         videoclips[i] = frame
                     
                     # word, videonum, offset, length, speed, demoindex
-                    self.StatesOutSignal.emit(word, keynum, str(begin), str(length),
-                                              '%.02f' % self.speed, '%d/%d' % (number, counter))
-                    self.DisplayLengthSig.emit(length)
-                    
+                    self.StatesOutSignal.emit(word, keynum, str(begin), str(length), '%d/%d' % (number, counter))
                     self.currentindex = 0
                     self.displayloop = True
                     while self.displayloop and self.sampleloop and self.wordloop:
