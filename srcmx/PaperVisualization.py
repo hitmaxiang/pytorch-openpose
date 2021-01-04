@@ -127,6 +127,36 @@ def GetRandomImages_of_skeleton(motion_dictpath, framnum, shape):
     
     return np.array(images)
 
+
+def WordFreqStatistics(recordfile, wordlistfile, wantnum):
+    recordinfodict = utilmx.ShapeletRecords().ReadRecordInfo(recordfile)
+    with open(wordlistfile, 'r') as f:
+        wordlines = f.readlines()
+    
+    WordStatisticList = []
+    for line in wordlines:
+        if line.strip() == '':
+            continue
+
+        word, count = line.strip().split()
+        if word not in recordinfodict.keys():
+            continue
+
+        bestsocre = 0
+        for key in recordinfodict[word].keys():
+            for shapelet in recordinfodict[word][key]['shapelet']:
+                bestsocre = max(bestsocre, shapelet[-1])
+        
+        WordStatisticList.append([word, count, bestsocre])
+    
+    WordStatisticList.sort(key=lambda item: item[-1], reverse=True)
+    WordStatisticList = WordStatisticList[:wantnum]
+    counter = [x[1] for x in WordStatisticList]
+    
+    plt.switch_backend('agg')
+    plt.hist(counter, bins=20)
+    plt.savefig('../data/img/wordinfofreq.jpg')
+    
         
 def RunTest(testcode, server):
     if server:
@@ -194,11 +224,16 @@ def RunTest(testcode, server):
                     comname = os.path.join(imgfolder, comname)
                     ConstructImageStack(samples, comname, shift)
                 break  # only onetime
+    
+    elif testcode == 3:
+        recordfile = '../data/spbsl/shapeletED.rec'
+        wordinfo = '../data/spbsl/wordinfo.txt'
+        WordFreqStatistics(recordfile, wordinfo, 1000)
         
     
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=2)
+    Parser.add_argument('-t', '--testcode', type=int, default=3)
     Parser.add_argument('-s', '--server', action='store_false')
 
     args = Parser.parse_args()

@@ -13,6 +13,7 @@ import sys
 import h5py
 import numpy as np
 import configparser
+import argparse
 
 from copy import deepcopy
 from PySide2.QtCore import *
@@ -186,7 +187,6 @@ class MainWindow(QMainWindow):
             self.ui.endidx_label.setVisible(False)
             self.ui.endidx_text.setVisible(False)
             
-
     @Slot()
     def UpdateLoopRange(self):
         a = self.ui.beginindex_spinBox.value()
@@ -241,12 +241,21 @@ class MainWindow(QMainWindow):
             self.VideoThread.speed = max(self.VideoThread.speed/2, 0.05)
 
 
-
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-s', '--server', action='store_true')
+
+    args = parser.parse_args()
+    server = args.server
+
+    if server is True:
+        videodir = '/home/mario/signdata/spbsl/normal'
+    else:
+        videodir = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
 
     worddictpath = '../data/spbsl/WordDict.pkl'
     subdictpath = '../data/spbsl/SubtitleDict.pkl'
-    videodir = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
     recpoint = [(700, 100), (1280, 720)]
     
     app = QApplication(sys.argv)

@@ -78,7 +78,7 @@ class ShapeletsFinding():
         if os.path.exists(self.recodfilepath):
             trainedrecords = utilmx.ReadShapeletRecords(self.recodfilepath)
         else:
-            trainedrecords = []
+            trainedrecords = {}
 
         for word in words:
             # 现阶段，对于sample特别多的先不分析
