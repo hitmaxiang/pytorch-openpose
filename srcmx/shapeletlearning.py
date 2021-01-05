@@ -89,6 +89,13 @@ class ShapeletsFinding():
                     continue
             self.word = word
             samples, sample_indexes = self.Getsamples(word)
+
+            # write the base line info
+            with open(self.recodfilepath, 'a') as f: 
+                for info in sample_indexes:
+                    if sample_indexes[-1] == 1:
+                        f.write('%s-%d\t' % (info[0], info[1]))
+                f.write('\n')
             
             for m in range(minlen, maxlen, stride):
                 if word in trainedrecords.keys():
@@ -128,7 +135,9 @@ class ShapeletsFinding():
                                                       locs[shapindex],
                                                       m_len)
 
-        BestKshapelets.insert(score, [key, locs])
+        validloc = [loc for i, loc in locs if sample_indexes[i][-1] == 1]
+
+        BestKshapelets.insert(score, [key, validloc])
         # shapelet = samples[shapindex][locs[shapindex]:locs[shapindex]+m_len, 0]
         Headerinfo = 'the word:%s with m length: %d' % (self.word, m_len)
         BestKshapelets.wirteinfo(Headerinfo, self.recodfilepath, 'a')

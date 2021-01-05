@@ -9,12 +9,14 @@ LastEditTime: 2021-01-04 20:57:06
 
 import os
 import cv2
+import joblib
 import utilmx
 import h5py
 import argparse
 import numpy as np
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 
+from SubtitleDict import WordsDict
 from copy import deepcopy
 
 
@@ -177,6 +179,66 @@ def ChooseAnnotatedWordFromRecord(recordfile, outname, thre=20, number=1000):
     with open(outname, 'w') as f:
         for word in chooseword:
             f.write('%s\n' % word)
+
+
+def CalculateRecallRate(annotationh5file, recordfile, best_k=1):
+    recorddict = utilmx.ShapeletRecords.ReadRecordInfo(recordfile)
+    annotationfile = h5py.File(annotationh5file, 'r')
+
+    RecallDict = {}
+    RecallDict['global'] = []
+    for word in annotationfile.keys():
+        if word not in recorddict.keys():
+            continue
+        for indexkey in annotationfile[word].keys():
+            annotation = annotationfile[word][indexkey][:]
+            if annotation[0] == -1:  # negative
+                continue
+            real_begin, real_end = annotation[1:3]
+            
+            RecallDict['global'].append(0)
+            for m_len in recorddict[word].keys():
+                if m_len not in RecallDict.keys():
+                    RecallDict[m_len] = []
+
+                RecallDict[m_len].append(0)
+
+                locs = recorddict[word][m_len]['loc']
+                # 针对的是每个Word每个m长度下的最优的 k 个结果
+                for loc in locs[:min(best_k, len(locs))]:
+                    begin = loc[int(indexkey)]
+                    end = begin + int(m_len)
+                    if not(end < real_begin or begin > real_end):
+                        RecallDict['global'][-1] = 1
+                        RecallDict[m_len][-1] = 1
+                        break
+    
+    for key in RecallDict.keys():
+        correct = sum(RecallDict[key])
+        Number = len(RecallDict[key])
+        rate = correct/Number
+        print('the recall rate is %d/%d = %f' % (correct, Number, rate))
+
+
+def locatIndexByVideoKeyoffset(h5pyfile, worddictpath, subdictpath, outpath):
+    worddict = WordsDict(worddictpath, subdictpath)
+    annotionfile = h5py.File(h5pyfile, 'r')
+
+    newfile = h5py.File(outpath, 'w')
+    for word in annotionfile.keys():
+        sampleinfos = worddict.ChooseSamples(word, 1.5)
+        for videokey in annotionfile[word].keys():
+            for offset in annotionfile[word][videokey].keys():
+                data = annotionfile[word][videokey][offset][:]
+                for index, info in enumerate(sampleinfos):
+                    if info[-1] == 1:
+                        if info[0] == videokey and info[1] == int(offset):
+                            newkey = 'word/%d' % index
+                            newfile.create_dataset(newkey, data=data)
+                            break
+    
+    annotionfile.close()
+    newfile.close()
 
 
 def RunTest(testcode, server):

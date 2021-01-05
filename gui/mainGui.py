@@ -72,10 +72,14 @@ class MainWindow(QMainWindow):
         self.ui.btn_speedup.clicked.connect(lambda: self.SpeedCtrl(1))
         self.ui.btn_slowdown.clicked.connect(lambda: self.SpeedCtrl(-1))
 
+        # Shapelet 模块的初始化
+        self.ui.m_len_combo.currentTextChanged.connect(self.VideoThread.SetCurrent_m_len)
+
         # VideoThread： 信号-槽
 
         self.VideoThread.ImgDisplaySignal.connect(self.UpdateVideoPlayerParames)
         self.VideoThread.StatesOutSignal.connect(self.UpdateDisplayparams)
+        self.VideoThread.SampleInfoSignal.connect(self.UpdateSampleInfo)
     
     @Slot()
     def ReadWordListFromFile(self, file):
@@ -120,12 +124,13 @@ class MainWindow(QMainWindow):
         self.VideoThread.UpdateWord(word, mode)
 
     @Slot()
-    def UpdateVideoPlayerParames(self, currentidx, speed):
+    def UpdateVideoPlayerParames(self, currentidx, speed, shapelet_begin):
         self.ui.currentframe.setText(str(currentidx))
         self.ui.speed_text.setText('x %.02f' % speed)
+        self.ui.location_text.setText('%d' % shapelet_begin)
+
         # update the img
         img = deepcopy(self.VideoThread.shareImg)
-
         height, width, depth = img.shape
         wb, hb = self.ui.videolabel.width(), self.ui.videolabel.height()
         f = min(wb/width, hb/height)
@@ -136,13 +141,25 @@ class MainWindow(QMainWindow):
         self.ui.videolabel.clear()
         self.ui.videolabel.setPixmap(QPixmap.fromImage(img))
 
+        # update the shapelet info
+        img = deepcopy(self.VideoThread.ShapeletImg)
+        height, width, depth = img.shape
+        wb, hb = self.ui.shapelet_video.width(), self.ui.shapelet_video.height()
+        f = min(wb/width, hb/height)
+        img = cv2.resize(img, (0, 0), fx=f, fy=f)
+        height, width, depth = img.shape
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = QImage(img.data, width, height, width*depth, QImage.Format_RGB888)
+        self.ui.shapelet_video.clear()
+        self.ui.shapelet_video.setPixmap(QPixmap.fromImage(img))
+
     @Slot()
-    def UpdateDisplayparams(self, word, videonum, offset, length, demoindex):
+    def UpdateDisplayparams(self, word, videonum, offset, length, index):
         self.ui.word_text.setText(word)
         self.ui.videokey_text.setText(videonum)
-        self.ui.offset_text.setText(offset)
-        self.ui.length_text.setText(length)
-        self.ui.idx_text.setText(demoindex)
+        self.ui.offset_text.setText(str(offset))
+        self.ui.length_text.setText(str(length))
+        self.ui.idx_text.setText('%d/%d' % (index+1, self.Count))
 
         length = int(length) - 1
         self.ui.beginindex_Slider.setMaximum(length)
@@ -239,7 +256,21 @@ class MainWindow(QMainWindow):
         if orien == 1:
             self.VideoThread.speed = min(self.VideoThread.speed+0.1, 5)
         elif orien == -1:
-            self.VideoThread.speed = max(self.VideoThread.speed/2, 0.05)
+            self.VideoThread.speed = max(self.VideoThread.speed-0.1, 0.1)
+
+    @Slot()
+    def UpdateSampleInfo(self, Count, m_list):
+        self.Count = Count
+        self.ui.m_len_combo.clear()
+        if len(m_list) > 0:
+            items = [str[x] for x in m_list]
+            self.ui.m_len_combo.addItems(items)
+            self.ui.m_len_combo.setCurrentIndex(0)
+    
+    @Slot()
+    def ChooseRecordFile(self):
+        fileName = QFileDialog.getOpenFileName(self, "Open recordfile", "../data/spbsl", "record Files (*rec)")
+        self.VideoThread.ReadRecordFile(fileName)
 
     @Slot()
     def closeEvent(self, event):
@@ -251,6 +282,7 @@ class MainWindow(QMainWindow):
             self.h5record.close()
         else:
             event.ignore()
+
 
 if __name__ == "__main__":
 
