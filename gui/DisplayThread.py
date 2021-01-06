@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-23 15:06:20
 LastEditors: mario
-LastEditTime: 2021-01-04 15:01:30
+LastEditTime: 2021-01-05 15:58:36
 '''
 import sys
 sys.path.append('..')
@@ -39,6 +39,7 @@ class DisplayThread(QThread):
 
         # control variables
         self.wordlist = []
+        self.word = None
         self.ShapeletDict = {}
         self.random = True
         
@@ -71,7 +72,14 @@ class DisplayThread(QThread):
 
     @Slot()
     def ReadRecordFile(self, recodfile):
-        self.ShapeletDict = utilmx.ShapeletRecords.ReadRecordInfo(recodfile)
+        self.ShapeletDict = utilmx.ShapeletRecords().ReadRecordInfo(recodfile)
+        m_list = []
+        if self.word in self.ShapeletDict.keys():
+            m_list = list(self.ShapeletDict[self.word].keys())
+            if len(m_list) >= 1:
+                self.m_len = m_list[0]
+                self.m_list = m_list
+                self.SampleInfoSignal.emit(-1, m_list)
 
     @Slot()
     def UpdateWord(self, word, mode):
@@ -95,7 +103,7 @@ class DisplayThread(QThread):
 
     @Slot()
     def SetCurrent_m_len(self, m_len):
-        self.m_len = int(m_len)
+        self.m_len = m_len
 
     def run(self):
         recpoint = self.recpoint
@@ -107,6 +115,7 @@ class DisplayThread(QThread):
             time.sleep(1)
             self.wordloop = True
             for word in self.wordlist:
+                self.word = word
                 if not self.wordloop:
                     break
                 
@@ -114,16 +123,18 @@ class DisplayThread(QThread):
                 # only use the positive samples
                 samples = [x for x in samples if x[-1] == 1]
 
+                # 提取 shapelet record 文件中的 word 信息
                 m_list = []
                 if word in self.ShapeletDict.keys():
                     m_list = list(self.ShapeletDict[word].keys())
                     if len(m_list) >= 1:
                         self.m_len = m_list[0]
-                
                 self.SampleInfoSignal.emit(len(samples), m_list)
+                self.m_list = m_list
 
                 self.sampleloop = True
-               
+
+                # 遍历该 Word 的所有 samples
                 for indx, sample in enumerate(samples):
                     if not (self.wordloop and self.sampleloop):
                         break
@@ -142,15 +153,16 @@ class DisplayThread(QThread):
                     self.currentindex = 0
                     self.displayloop = True
 
+                    # display loop
                     while self.displayloop and self.sampleloop and self.wordloop:
                         if self.currentindex >= self.maximumindex or self.currentindex < self.minimumindex:
                             self.currentindex = self.minimumindex
                             time.sleep(0.5)
                         
                         # set the loop of shapelet
-                        if self.m_len in m_list:
-                            shapelet_begin = self.ShapeletDict[word][self.m_len]['loc'][indx]
-                            shapelet_end = self.m_len + shapelet_begin
+                        if self.m_len in self.m_list:
+                            shapelet_begin = self.ShapeletDict[word][self.m_len]['loc'][0][indx]
+                            shapelet_end = int(self.m_len) + shapelet_begin
                         else:
                             shapelet_begin, shapelet_end = 0, 0
                             shapelt_current = 0
@@ -160,6 +172,7 @@ class DisplayThread(QThread):
                             shapelt_current = shapelet_begin
                         
                         self.ShapeletImg = videoclips[shapelt_current]
+                        shapelt_current += 1
 
                         # print(self.currentindex, self.maximumindex)
                         self.shareImg = videoclips[self.currentindex]

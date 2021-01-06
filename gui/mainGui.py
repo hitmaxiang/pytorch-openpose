@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2021-01-02 21:47:05
 LastEditors: mario
-LastEditTime: 2021-01-04 15:00:20
+LastEditTime: 2021-01-05 15:46:25
 '''
 import re
 import os
@@ -38,6 +38,8 @@ class MainWindow(QMainWindow):
         self.InitWidgets()
 
     def InitWidgets(self):
+        # menuBar
+        self.ui.actionrecordfile.triggered.connect(self.ChooseRecordFile)
         # 读取配置文件
         self.config = configparser.ConfigParser()
         self.config.read('config.ini')
@@ -260,17 +262,25 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def UpdateSampleInfo(self, Count, m_list):
-        self.Count = Count
+        if Count > 0:
+            self.Count = Count
+            
         self.ui.m_len_combo.clear()
         if len(m_list) > 0:
-            items = [str[x] for x in m_list]
+            items = [str(x) for x in m_list]
             self.ui.m_len_combo.addItems(items)
             self.ui.m_len_combo.setCurrentIndex(0)
     
     @Slot()
     def ChooseRecordFile(self):
-        fileName = QFileDialog.getOpenFileName(self, "Open recordfile", "../data/spbsl", "record Files (*rec)")
-        self.VideoThread.ReadRecordFile(fileName)
+        results = QFileDialog.getOpenFileName(self,
+                                              "Open recordfile", 
+                                              "../data/spbsl",
+                                              "record Files (*.rec)")
+        
+        filepath = results[0]
+        if os.path.exists(filepath):
+            self.VideoThread.ReadRecordFile(filepath)
 
     @Slot()
     def closeEvent(self, event):

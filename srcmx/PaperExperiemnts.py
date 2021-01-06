@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-25 17:55:59
 LastEditors: mario
-LastEditTime: 2021-01-04 20:57:06
+LastEditTime: 2021-01-05 22:04:10
 '''
 
 import os
@@ -52,112 +52,64 @@ def ConstructImageStack(images, outname, shift=10):
     # plt.show()
 
 
-def GetRandomImages_from_video(videopath, frames, rec=None, fx=1):
-    if os.path.exists(videopath):
-        video = cv2.VideoCapture(videopath)
-        Count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        indexes = np.random.randint(Count, size=(frames,))
-        images = []
-        for i in range(frames):
-            video.set(cv2.CAP_PROP_POS_FRAMES, indexes[i])
-            _, img = video.read()
-            img = cv2.resize(img, (0, 0), fx=fx, fy=fx, interpolation=cv2.INTER_CUBIC)
-            if rec is not None:
-                img = img[rec[0][1]:rec[1][1], rec[0][0]:rec[1][0], :]
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # 转化为 RGB 颜色空间
-                img = cv2.flip(img, 0)  # 垂直翻转
-            images.append(img)
-        images = np.array(images)
-        video.release()
-    
-        return images
+def GetRandomImages(videopath, motionfilepath, framenum, rec):
+    basedir, filename = os.path.split(videopath)
+    videokey = filename[:3]
 
+    # get the motion data
+    posekey = 'posedata/pose/%s' % videokey
+    handkey = 'handdata/hand/%s' % videokey
+    motionfile = h5py.File(motionfilepath, 'r')
+    posedata = motionfile[posekey]
+    handdata = motionfile[handkey]
 
-def GetrandomImages_from_video_with_skeleton(videopath, posedata, handdata, framnum, rec):
-    if os.path.exists(videopath):
-        video = cv2.VideoCapture(videopath)
-        Count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        indexes = np.random.randint(Count, size=(framnum,))
+    # open the videofile and random choose framenum imges
+    video = cv2.VideoCapture(videopath)
+    count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    indexes = np.random.randint(count, size=(framenum,))
 
-        images = []
-        origimgs = []
-        
-        for index in indexes:
-            video.set(cv2.CAP_PROP_POS_FRAMES, index)
-            _, img = video.read()
-            img = img[rec[0][1]:rec[1][1], rec[0][0]:rec[1][0], :]
-
-            origimg = deepcopy(img)
-            origimg = cv2.cvtColor(origimg, cv2.COLOR_BGR2RGB)  # 转化为 RGB 颜色空间
-            origimg = cv2.flip(origimg, 0)  # 垂直翻转
-            origimgs.append(deepcopy(origimg))
-
-            img = utilmx.DrawPose(img, posedata[index], handdata[index])
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # 转化为 RGB 颜色空间
-            img = cv2.flip(img, 0)  # 垂直翻转
-            images.append(img)
-        
-        return np.array(origimgs), np.array(images)
-
-
-def GetRandomImages_of_skeleton(motion_dictpath, framnum, shape):
-    h5file = h5py.File(motion_dictpath, mode='r')
-    while True:
-        videokey = '%03d' % (np.random.randint(100))
-        posekey = 'posedata/pose/%s' % videokey
-        handkey = 'handdata/hand/%s' % videokey
-
-        if posekey in h5file and handkey in h5file:
-            posedata = h5file[posekey]
-            handdata = h5file[handkey]
-            break
-    
-    Count = len(posedata)
-    indexes = np.random.randint(Count, size=(framnum,))
-    
     images = []
-    for i in indexes:
-        img = np.zeros(shape + (3,), dtype=np.uint8)
-        # set the background (BGR order)
-        img[:, :, 0] = 105
-        img[:, :, 1] = 118
-        img[:, :, 2] = 128
-        img = utilmx.DrawPose(img, posedata[i], handdata[i])
+    origimgs = []
+        
+    for index in indexes:
+        video.set(cv2.CAP_PROP_POS_FRAMES, index)
+        _, img = video.read()
+        img = img[rec[0][1]:rec[1][1], rec[0][0]:rec[1][0], :]
+
+        origimg = deepcopy(img)
+        origimg = cv2.cvtColor(origimg, cv2.COLOR_BGR2RGB)  # 转化为 RGB 颜色空间
+        origimg = cv2.flip(origimg, 0)  # 垂直翻转
+        origimgs.append(deepcopy(origimg))
+
+        img = utilmx.DrawPose(img, posedata[index], handdata[index])
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # 转化为 RGB 颜色空间
         img = cv2.flip(img, 0)  # 垂直翻转
         images.append(img)
     
-    return np.array(images)
+    return np.array(origimgs), np.array(images)
 
 
 def WordFreqStatistics(recordfile, wordlistfile, wantnum):
-    recordinfodict = utilmx.ShapeletRecords().ReadRecordInfo(recordfile)
+    # recordinfodict = utilmx.ShapeletRecords().ReadRecordInfo(recordfile)
     with open(wordlistfile, 'r') as f:
         wordlines = f.readlines()
     
-    WordStatisticList = []
+    counter = []
     for line in wordlines:
         if line.strip() == '':
             continue
 
         word, count = line.strip().split()
-        if word not in recordinfodict.keys():
-            continue
-
-        bestsocre = 0
-        for key in recordinfodict[word].keys():
-            for shapelet in recordinfodict[word][key]['shapelet']:
-                bestsocre = max(bestsocre, shapelet[-1])
-        
-        WordStatisticList.append([word, count, bestsocre])
-    
-    WordStatisticList.sort(key=lambda item: item[-1], reverse=True)
-    WordStatisticList = WordStatisticList[:wantnum]
-    counter = [x[1] for x in WordStatisticList]
+        counter.append(int(count))
     
     plt.switch_backend('agg')
-    plt.hist(counter, bins=20)
-    plt.savefig('../data/img/wordinfofreq.jpg')
+    fig, ax = plt.subplots()
+    
+    ax.hist(counter, bins=100, range=(20, 1000), density=True)
+    ax.set_xlabel('occurrence number')
+    ax.set_ylabel('frequency density')
+    fig.tight_layout()
+    plt.savefig('../data/img/wordfreq.jpg')
 
 
 def ChooseAnnotatedWordFromRecord(recordfile, outname, thre=20, number=1000):
@@ -182,7 +134,7 @@ def ChooseAnnotatedWordFromRecord(recordfile, outname, thre=20, number=1000):
 
 
 def CalculateRecallRate(annotationh5file, recordfile, best_k=1):
-    recorddict = utilmx.ShapeletRecords.ReadRecordInfo(recordfile)
+    recorddict = utilmx.ShapeletRecords().ReadRecordInfo(recordfile)
     annotationfile = h5py.File(annotationh5file, 'r')
 
     RecallDict = {}
@@ -217,7 +169,7 @@ def CalculateRecallRate(annotationh5file, recordfile, best_k=1):
         correct = sum(RecallDict[key])
         Number = len(RecallDict[key])
         rate = correct/Number
-        print('the recall rate is %d/%d = %f' % (correct, Number, rate))
+        print('the recall rate of %s is %d/%d = %f' % (key, correct, Number, rate))
 
 
 def locatIndexByVideoKeyoffset(h5pyfile, worddictpath, subdictpath, outpath):
@@ -233,7 +185,7 @@ def locatIndexByVideoKeyoffset(h5pyfile, worddictpath, subdictpath, outpath):
                 for index, info in enumerate(sampleinfos):
                     if info[-1] == 1:
                         if info[0] == videokey and info[1] == int(offset):
-                            newkey = 'word/%d' % index
+                            newkey = '%s/%d' % (word, index)
                             newfile.create_dataset(newkey, data=data)
                             break
     
@@ -246,61 +198,39 @@ def RunTest(testcode, server):
         videodir = '/home/mario/signdata/spbsl/normal'
     else:
         videodir = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
-
+    
+    # extracted file from videos
     motion_dictpath = '../data/spbsl/motiondata.hdf5'
-    imgfolder = '../data/img'
+    worddictpath = '../data/spbsl/WordDict.pkl'
+    subtitledictpath = '../data/spbsl/SubtitleDict.pkl'
     Recpoint = [(700, 100), (1280, 720)]
+
+    # the data of shapelet info
+    shapeletrecordED = '../data/spbsl/shapeletED.rec'
+    shapeletrecordNet = '../data/spbsl/shapeletNetED.rec'
+
+    # groud truth of the database
+    annotationpath = '../gui/annotation.hdf5'
+    wordlistpath = '../gui/wordlist.txt'
+    wordinfopth = '../data/spbsl/wordinfo.txt'
     
+    # target directory
+    imgfolder = '../data/img'
+    
+    # save the 3D thumbnails of the video and skeleton
     if testcode == 0:
-        # get the 3D thumbnails of the video frames
-        getnum, framenum = 5, 5
-        filenames = os.listdir(videodir)
-        for filename in filenames:
-            ext = os.path.splitext(filename)[1]
-            if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
-                videopath = os.path.join(videodir, filename)
-                for i in range(getnum):
-                    outname = 'videothumb_%d_%d.jpg' % (framenum, i)
-                    outpath = os.path.join(imgfolder, outname)
-                    samples = GetRandomImages_from_video(videopath, framenum, Recpoint)
-                    ConstructImageStack(samples, outpath)
-                break  # only onetime
-    
-    elif testcode == 1:
-        # save the 3D thumbnails of the skeleton frames
-        getnum, framenum = 10, 5
-        imgshape = (Recpoint[1][1] - Recpoint[0][1], Recpoint[1][0] - Recpoint[0][0])
-        for i in range(getnum):
-            outname = 'skeletonthumb_%d_%d.jpg' % (framenum, i)
-            outpath = os.path.join(imgfolder, outname)
-            samples = GetRandomImages_of_skeleton(motion_dictpath, framenum, imgshape)
-            ConstructImageStack(samples, outpath)
-    
-    elif testcode == 2:
-        # save the 3D thumbnails of the video and skeleton
         getnum, framenum, shift = 6, 5, 10
         filenames = os.listdir(videodir)
-
-        motionh5file = h5py.File(motion_dictpath, 'r')
-
+        
         for filename in filenames:
             ext = os.path.splitext(filename)[1]
             if ext in ['.mp4', '.mkv', '.rmvb', '.avi']:
                 videopath = os.path.join(videodir, filename)
 
-                videokey = filename[:3]
-                posekey = 'posedata/pose/%s' % videokey
-                handkey = 'handdata/hand/%s' % videokey
-
-                posedata = motionh5file[posekey]
-                handdata = motionh5file[handkey]
-
                 for i in range(getnum):
                     outname = 'videothumb_%d_%d.jpg' % (framenum, i)
                     outpath = os.path.join(imgfolder, outname)
-                    orisamples, samples = GetrandomImages_from_video_with_skeleton(
-                        videopath, posedata=posedata, handdata=handdata, framnum=framenum, rec=Recpoint)
-                    
+                    orisamples, samples = GetRandomImages(videopath, motion_dictpath, framenum, Recpoint)
                     ConstructImageStack(orisamples, outpath, shift)
 
                     comname = 'combthumb_%d_%d.jpg' % (framenum, i)
@@ -308,21 +238,25 @@ def RunTest(testcode, server):
                     ConstructImageStack(samples, comname, shift)
                 break  # only onetime
     
-    elif testcode == 3:
+    # draw the distribution of the word frequence
+    elif testcode == 1:
         recordfile = '../data/spbsl/shapeletED.rec'
         wordinfo = '../data/spbsl/wordinfo.txt'
         WordFreqStatistics(recordfile, wordinfo, 1000)
     
-    elif testcode == 4:
-        recordfile = '../data/spbsl/shapeletED.rec'
-        wordlist = '../gui/wordlist.txt'
+    # caculate the recall rate of the shapelets
+    elif testcode == 2:
+        newannotationfile = '../data/spbsl/annotationindex.hdf5'
+        if not os.path.exists(newannotationfile):
+            locatIndexByVideoKeyoffset(annotationpath, worddictpath, subtitledictpath, newannotationfile)
+        CalculateRecallRate(newannotationfile, shapeletrecordED)
+        CalculateRecallRate(newannotationfile, shapeletrecordNet)
 
-        ChooseAnnotatedWordFromRecord(recordfile, wordlist)
         
     
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=4)
+    Parser.add_argument('-t', '--testcode', type=int, default=2)
     Parser.add_argument('-s', '--server', action='store_true')
 
     args = Parser.parse_args()

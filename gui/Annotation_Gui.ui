@@ -226,7 +226,7 @@
      <enum>Qt::Horizontal</enum>
     </property>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget4">
     <property name="geometry">
      <rect>
       <x>200</x>
@@ -302,13 +302,13 @@
      </item>
     </layout>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget5">
     <property name="geometry">
      <rect>
       <x>601</x>
       <y>10</y>
       <width>141</width>
-      <height>71</height>
+      <height>89</height>
      </rect>
     </property>
     <layout class="QFormLayout" name="formLayout_2">
@@ -344,7 +344,7 @@
      </item>
     </layout>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget6">
     <property name="geometry">
      <rect>
       <x>192</x>
@@ -376,7 +376,7 @@
      </item>
     </layout>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget7">
     <property name="geometry">
      <rect>
       <x>600</x>
@@ -418,8 +418,26 @@
      <height>22</height>
     </rect>
    </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <widget class="QMenu" name="menuLoad">
+     <property name="title">
+      <string>Load</string>
+     </property>
+     <addaction name="actionrecordfile"/>
+    </widget>
+    <addaction name="menuLoad"/>
+   </widget>
+   <addaction name="menuFile"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionrecordfile">
+   <property name="text">
+    <string>recordfile</string>
+   </property>
+  </action>
  </widget>
  <resources/>
  <connections>
