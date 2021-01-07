@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2021-01-02 21:47:05
 LastEditors: mario
-LastEditTime: 2021-01-05 15:46:25
+LastEditTime: 2021-01-07 22:34:12
 '''
 import re
 import os
@@ -46,7 +46,7 @@ class MainWindow(QMainWindow):
 
         # 读取 标记文件
         recordfile = self.config.get('DEFAULT', 'recordfile')
-        self.h5record = h5py.File(recordfile, mode='a')
+        self.h5annotation = h5py.File(recordfile, mode='a')
 
         # wordlist 模块的配置
 
@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
                     wordlist.append(line)
         wordlist.sort()
         self.DisplayWordList(wordlist)
+        self.allwordlist = wordlist
         self.wordlist = wordlist
         self.VideoThread.wordlist = wordlist
         
@@ -113,9 +114,39 @@ class MainWindow(QMainWindow):
         word = self.ui.listWidget.itemAt(pos).text()
         menu = QMenu()
         menu.addAction('samples').triggered.connect(lambda: self.DemonWord('sample', word))
-        menu.addSeparator()
         menu.addAction('shapelets').triggered.connect(lambda: self.DemonWord('shapelet', word))
+        menu.addSeparator()
+        menu.addAction('annotationlist').triggered.connect(lambda: self.WordListShow(1))
+        menu.addAction('allwordlist').triggered.connect(lambda: self.WordListShow(0))
+        menu.addSeparator()
+        menu.addAction('delAnntation').triggered.connect(lambda: self.DeleteAnnotation(word))
         menu.exec_(self.ui.listWidget.mapToGlobal(pos))
+    
+    @Slot()
+    def WordListShow(self, mode):
+        if mode == 0:
+            self.wordlist = self.allwordlist
+        elif mode == 1:
+            # only show annotated word
+            tempwordlist = []
+            for word in list(self.h5annotation.keys()):
+                tempwordlist.append(word)
+            self.wordlist = tempwordlist
+        
+        self.DisplayWordList(self.wordlist)
+    
+    @Slot()
+    def DeleteAnnotation(self, word):
+        msgBox = QMessageBox.question
+        if word in self.h5annotation.keys():
+            num = len(list(self.h5annotation[word].keys()))
+            ret = msgBox(self, '警告', '%s的%d个标记将被删除，是否确认' % (word, num),
+                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if ret == QMessageBox.Yes:
+                del self.h5annotation[word]
+                self.h5annotation.flush()
+        else:
+            msgBox(self, '提示', '%s 不在标记文件中！' % word, QMessageBox.Ok, QMessageBox.Ok)
 
     def DisplayWordList(self, wordlist):
         self.ui.listWidget.clear()
@@ -174,11 +205,11 @@ class MainWindow(QMainWindow):
         self.ui.endindex_spinBox.setValue(length)
 
         h5key = '%s/%s/%s' % (word, videonum, offset)
-        if h5key in self.h5record.keys():
+        if h5key in self.h5annotation.keys():
             self.ui.annotated_text.setText('True')
             self.ui.postive_label.setVisible(True)
             self.ui.positive_text.setVisible(True)
-            data = self.h5record[h5key][:]
+            data = self.h5annotation[h5key][:]
             if data[0] == 1:
                 self.ui.positive_text.setText('True')
 
@@ -224,7 +255,7 @@ class MainWindow(QMainWindow):
             return
 
         h5key = '%s/%s/%s' % (word, videokey, offset)
-        if h5key in self.h5record.keys():
+        if h5key in self.h5annotation.keys():
             msgBox = QMessageBox()
             msgBox.setText('This sample is already annotated!!!')
             msgBox.setInformativeText('Do you want to overwrite the exist annotation?')
@@ -233,17 +264,17 @@ class MainWindow(QMainWindow):
             if ret != QMessageBox.Yes:
                 return
         else:
-            self.h5record.create_dataset(h5key, (3,))
+            self.h5annotation.create_dataset(h5key, (3,))
         
         if flag == -1:
-            self.h5record[h5key][:] = np.array([-1, -1, -1])
+            self.h5annotation[h5key][:] = np.array([-1, -1, -1])
         else:
             beginidx = self.ui.beginindex_spinBox.value()
             endidx = self.ui.endindex_spinBox.value()
             minv, maxv = min(beginidx, endidx), max(beginidx, endidx)
-            self.h5record[h5key][:] = np.array([1, minv, maxv])
+            self.h5annotation[h5key][:] = np.array([1, minv, maxv])
             
-        self.h5record.flush()
+        self.h5annotation.flush()
         self.VideoThread.NextSample()
 
     @Slot()
@@ -289,7 +320,7 @@ class MainWindow(QMainWindow):
 
         if reply == QMessageBox.Yes:
             event.accept()
-            self.h5record.close()
+            self.h5annotation.close()
         else:
             event.ignore()
 
