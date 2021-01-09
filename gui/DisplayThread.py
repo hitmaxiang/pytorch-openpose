@@ -60,7 +60,7 @@ class DisplayThread(QThread):
         h, w = recpoint[1][1] - recpoint[0][1], recpoint[1][0] - recpoint[0][0]
         self.shareImg = np.zeros((h, w, 3), dtype=np.uint8)
         self.ShapeletImg = np.zeros_like(self.shareImg)
-
+    
     def Getvideohandles(self, videodir):
         videohandles = {}
         videofiles = os.listdir(videodir)

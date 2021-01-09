@@ -35,8 +35,7 @@ def MotionJointFeatures(motiondata, datamode=None, featuremode=0):
             raise Exception('please input correct datamode')
     
     # the body mode motiondata has 18 joints of the whole body
-
-    if featuremode == 0:
+    if featuremode == 0 or featuremode == 1:
         # 采用最为原始的方式，只选取比较有代表的节点
         posedata = motiondata[:, :18, :2]
         posedata -= posedata[:, 1].reshape(T, 1, -1)
@@ -60,6 +59,13 @@ def MotionJointFeatures(motiondata, datamode=None, featuremode=0):
             data = np.concatenate((posedata, lefthanddata, righthanddata), axis=1)
         elif datamode == 'pose':
             data = posedata
+
+    if featuremode == 1:
+        # 主要的操作和 featuremode=0 的时候基本是一致的， 附加要做的是尺度归一化
+        # 归一化的参数是 heart 与 nose 之间的垂直距离
+        scale = motiondata[:, 0, 1] - motiondata[:, 1, 1] + 1e-5
+        scale = scale[:, np.newaxis, np.newaxis]
+        data = data/scale
 
     return data
     

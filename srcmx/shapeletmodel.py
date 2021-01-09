@@ -47,14 +47,14 @@ class ShapeletNetModel(nn.Module):
             Y_e, meadis = self.forward(X, Y)
             # loss = self.loss_fn(Y_e, Y) + meadis
             loss = self.loss_fn(Y_e, Y)
-            if loss.item() > temploss:
-                if counter > 100:
-                    break
-                else:
-                    counter += 1
-            else:
-                temploss = loss.item()
-                counter = 0
+            # if loss.item() > temploss:
+            #     if counter > 100:
+            #         break
+            #     else:
+            #         counter += 1
+            # else:
+            #     temploss = loss.item()
+            #     counter = 0
 
             self.optimer.zero_grad()
             loss.backward()
@@ -62,7 +62,7 @@ class ShapeletNetModel(nn.Module):
             with torch.no_grad():
                 _, predics = torch.max(Y_e, dim=1)
                 correct = int((predics == Y).sum())
-            if i % 100 == 0:
+            if i % 1000 == 0:
                 print('epoch: %d, loss %f, accuracy: %f' % (i, loss, correct/Y.shape[0]))
         
         print('\n finish the train:\n')

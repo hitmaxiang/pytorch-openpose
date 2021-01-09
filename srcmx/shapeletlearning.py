@@ -13,7 +13,9 @@ import joblib
 import tslearn
 import torch
 import h5py
+import argparse
 import numpy as np
+import PaperExperiments as PE
 import shapeletmodel as SM
 import PreprocessingData as PD
 import matplotlib.pyplot as plt
@@ -52,28 +54,37 @@ class ShapeletsFinding():
 
             # 针对每个 clip 数据, 只选取上面身的关节数据作为特征
             # clip_data = PD.MotionJointFeatures(clip_data, datamode='posehand', featuremode=0)
-            clip_data = PD.MotionJointFeatures(clip_data, datamode='posehand', featuremode=0)
+            clip_data = PD.MotionJointFeatures(clip_data, datamode='posehand', featuremode=1)
             clip_data = np.reshape(clip_data, (clip_data.shape[0], -1))
             # 因为原始的数据类型为int16， 在后续计算的过程中，容易溢出
             samples.append(clip_data)
         return samples, sample_indexes
     
-    def train(self, word=None, method=2):
+    def train(self, word=None, method=2, recordfile=None, normed=False, refrecordfile=None):
 
+        if refrecordfile is None:
+            refrecordfile = '../data/spbsl/shapeletED.rec'
+        
         if method == 1:
-            self.current_shapelet_dict = utilmx.ShapeletRecords().ReadRecordInfo('../data/spbsl/shapeletED.rec')
+            self.current_shapelet_dict = utilmx.ShapeletRecords().ReadRecordInfo(refrecordfile)
             self.recodfilepath = '../data/spbsl/shapeletNetED.rec'
         elif method == 2:
             self.recodfilepath = '../data/spbsl/shapeletED.rec'
         else:
             self.recodfilepath = '../data/spbsl/shapeletany.rec'
+        
+        # 可以定制输出结果以及是否需要归一化
+        if recordfile is not None:
+            self.recodfilepath = recordfile
+        self.neednorm = normed
+
         if word is None:
             words = self.cls_worddict.worddict.keys()
         elif isinstance(word, str):
             words = [word]
         elif isinstance(word, list):
             words = word
-        minlen, maxlen, stride = 10, 30, 3
+        minlen, maxlen, stride = 15, 40, 2
 
         if os.path.exists(self.recodfilepath):
             trainedrecords = utilmx.ReadShapeletRecords(self.recodfilepath)
@@ -119,7 +130,8 @@ class ShapeletsFinding():
         BestKshapelets = utilmx.Best_K_Items(K=10)
 
         # 对样本集合进行归一化处理
-        samples = PD.NormlizeData(samples, mode=1)
+        if self.neednorm:
+            samples = PD.NormlizeData(samples, mode=1)
         
         labels = torch.tensor([x[-1] for x in sample_indexes])
         shapeletmodel.train(samples, labels, m_len)
@@ -135,7 +147,7 @@ class ShapeletsFinding():
                                                       locs[shapindex],
                                                       m_len)
 
-        validloc = [loc for i, loc in locs if sample_indexes[i][-1] == 1]
+        validloc = [loc for i, loc in enumerate(locs) if sample_indexes[i][-1] == 1]
 
         BestKshapelets.insert(score, [key, validloc])
         # shapelet = samples[shapindex][locs[shapindex]:locs[shapindex]+m_len, 0]
@@ -161,7 +173,8 @@ class ShapeletsFinding():
 
     def FindShaplets_Net_ED(self, samples, sample_indexes, m_len):
         # 对样本集合进行归一化处理
-        samples = PD.NormlizeData(samples, mode=1)
+        if self.neednorm:
+            samples = PD.NormlizeData(samples, mode=1)
 
         BestKshapelets = utilmx.Best_K_Items(K=10)
 
@@ -223,20 +236,53 @@ class ShapeletsFinding():
             BestKshapelets.wirteinfo(Headerinfo, self.recodfilepath, 'a')
 
         
-def Test(testcode):
+def RunTest(testcode, method, retrain):
     motionhdf5filepath = '../data/spbsl/motiondata.hdf5'
     # motionsdictpath = '../data/spbsl/motionsdic.pkl'
     worddictpath = '../data/spbsl/WordDict.pkl'
-    subtitledictpath = '../data//spbsl/SubtitleDict.pkl'
-    # annotationdictpath = '../data/annotationdict.pkl'
+    subtitledictpath = '../data/spbsl/SubtitleDict.pkl'
+    annotationdictpath = '../data/spbsl/annotationindex.hdf5'
+
     if testcode == 0:
+        # calculate the shapelet info with all the data
         cls_shapelet = ShapeletsFinding(motionhdf5filepath, worddictpath, subtitledictpath)
         # consider: 500, thank:2153, supermarket:60, weekend: 76, expert: 99
         # cls_shapelet.train('supermarket', method=1)
         cls_shapelet.train(method=1)
 
+    elif testcode == 1:
+        with h5py.File(annotationdictpath, 'r') as f:
+            words = list(f.keys())
+        EDrecordfile = '../data/spbsl/temprecord.rec'
+        Netrecordfile = '../data/spbsl/temprecordnet.rec'
+
+        if method == 2:
+            recordfile = EDrecordfile
+        elif method == 1:
+            recordfile = Netrecordfile
+        
+        if retrain:
+            with open(recordfile, 'w') as f:
+                pass
+            
+        cls_shapelet = ShapeletsFinding(motionhdf5filepath, worddictpath, subtitledictpath)
+        if method == 2:
+            cls_shapelet.train(words, method=method, recordfile=recordfile, normed=False)
+        elif method == 1:
+            cls_shapelet.train(words, method=method, recordfile=recordfile, normed=False, refrecordfile=EDrecordfile)
+
+        PE.CalculateRecallRate(annotationdictpath, recordfile)
+        
         
 if __name__ == "__main__":
     # import os
     # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-    Test(0)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-t', '--testcode', type=int, default=1)
+    parser.add_argument('-r', '--retrain', action='store_true')
+    parser.add_argument('-m', '--method', type=int, default=2)
+    args = parser.parse_args()
+    testcode = args.testcode
+    retrain = args.retrain
+    method = args.method
+    RunTest(testcode, method, retrain)
