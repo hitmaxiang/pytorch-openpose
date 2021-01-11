@@ -293,7 +293,6 @@ def RunTest(testcode, server):
         AnticolorOfPicture(imgpath, outpath, mode=1)
 
         
-    
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
     Parser.add_argument('-t', '--testcode', type=int, default=3)

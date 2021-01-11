@@ -280,7 +280,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--testcode', type=int, default=1)
     parser.add_argument('-r', '--retrain', action='store_true')
-    parser.add_argument('-m', '--method', type=int, default=2)
+    parser.add_argument('-m', '--method', type=int, default=1)
     args = parser.parse_args()
     testcode = args.testcode
     retrain = args.retrain
