@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:25:13
 LastEditors: mario
-LastEditTime: 2020-12-07 20:45:15
+LastEditTime: 2021-01-11 23:09:13
 '''
 import os
 import time
@@ -30,7 +30,26 @@ class ShapeletsFinding():
         # self.motiondatadict = joblib.load(motion_dictpath)
         self.motiondatafile = h5py.File(motion_dictpath, mode='r')
         self.cls_worddict = WordsDict(word_dictpath, subtitle_dictpath)
+
+        # 数据特征类型
+        self.datamode = 'posehand'
+        self.featuremode = 1
+        self.normmode = False
+
+        # m_len level
+        self.min_m = 15
+        self.max_m = 40
+        self.stride_m = 2
     
+    def SetDataMode(self, datamode=None, featuremode=None, normmode=None, min_m=None, max_m=None, stride_m=None):
+        datadict = {'datamode':self.datamode, 'featuremode}
+        if datamode is not None:
+            self.datamode = datamode
+        if featuremode is not None:
+            self.featuremode = None
+        if normmode is not None:
+            self.normmode = normmode
+
     def Getsamples(self, word):
         '''
         description: get the instance of the word, and random sample the negative samples
@@ -54,13 +73,13 @@ class ShapeletsFinding():
 
             # 针对每个 clip 数据, 只选取上面身的关节数据作为特征
             # clip_data = PD.MotionJointFeatures(clip_data, datamode='posehand', featuremode=0)
-            clip_data = PD.MotionJointFeatures(clip_data, datamode='posehand', featuremode=1)
+            clip_data = PD.MotionJointFeatures(clip_data, datamode=self.datamode, featuremode=self.featuremode)
             clip_data = np.reshape(clip_data, (clip_data.shape[0], -1))
             # 因为原始的数据类型为int16， 在后续计算的过程中，容易溢出
             samples.append(clip_data)
         return samples, sample_indexes
     
-    def train(self, word=None, method=2, recordfile=None, normed=False, refrecordfile=None):
+    def train(self, word=None, method=2, h5recordpath='../data/shapeletrecord.hdf5', overwrite=False):
 
         if refrecordfile is None:
             refrecordfile = '../data/spbsl/shapeletED.rec'
@@ -100,6 +119,9 @@ class ShapeletsFinding():
                     continue
             self.word = word
             samples, sample_indexes = self.Getsamples(word)
+
+            # 为了保证完整的信息，这里将会把samples 准确的位置信息进行记录
+
 
             # write the base line info
             with open(self.recodfilepath, 'a') as f: 
