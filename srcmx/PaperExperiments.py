@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-25 17:55:59
 LastEditors: mario
-LastEditTime: 2021-01-05 22:04:10
+LastEditTime: 2021-01-11 16:26:30
 '''
 
 import os
@@ -193,6 +193,41 @@ def locatIndexByVideoKeyoffset(h5pyfile, worddictpath, subdictpath, outpath):
     newfile.close()
 
 
+def AnticolorOfPicture(imgpath, outpath=None, mode=0):
+    if os.path.isfile(imgpath):
+        if mode == 0:
+            # 将图片的黑白色进行翻转
+            black = np.array([0, 0, 0])
+            white = np.array([255, 255, 255])
+            sigma = 5
+
+            img = cv2.imread(imgpath)
+            H, W, C = img.shape
+            for h in range(H):
+                for w in range(W):
+                    color = img[h, w, :3]
+                    if np.max(np.abs(color - black)) < sigma:
+                        img[h, w, :3] = white
+                    elif np.max(np.abs(color - white)) < sigma:
+                        img[h, w, :3] = black
+            cv2.imshow('img', img)
+            cv2.waitKey(0)
+        
+        elif mode == 1:
+            # 将所有颜色进行反色处理
+            img = cv2.imread(imgpath)
+            H, W, C = img.shape
+            for h in range(H):
+                for w in range(W):
+                    color = img[h, w, :3]
+                    img[h, w, :3] = 255 - color
+            cv2.imshow('img', img)
+            cv2.waitKey(0)
+        
+        if outpath is not None:
+            cv2.imwrite(outpath, img)
+
+
 def RunTest(testcode, server):
     if server:
         videodir = '/home/mario/signdata/spbsl/normal'
@@ -251,12 +286,17 @@ def RunTest(testcode, server):
             locatIndexByVideoKeyoffset(annotationpath, worddictpath, subtitledictpath, newannotationfile)
         CalculateRecallRate(newannotationfile, shapeletrecordED)
         CalculateRecallRate(newannotationfile, shapeletrecordNet)
+    
+    elif testcode == 3:
+        imgpath = '../data/img/keypoints_pose_18.png'
+        outpath = '../data/img/keypoints_pose.png'
+        AnticolorOfPicture(imgpath, outpath, mode=1)
 
         
     
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=2)
+    Parser.add_argument('-t', '--testcode', type=int, default=3)
     Parser.add_argument('-s', '--server', action='store_true')
 
     args = Parser.parse_args()
