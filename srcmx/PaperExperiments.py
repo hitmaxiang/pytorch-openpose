@@ -253,7 +253,6 @@ def RunTest(testcode, server):
         CalculateRecallRate(newannotationfile, shapeletrecordNet)
 
         
-    
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
     Parser.add_argument('-t', '--testcode', type=int, default=2)
