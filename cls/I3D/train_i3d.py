@@ -19,23 +19,6 @@ from pytorch_i3d import InceptionI3d
 # from datasets.nslt_dataset import NSLT as Dataset
 from datasetcreate import BSLDataSet as Dataset
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
-
-parser = argparse.ArgumentParser()
-parser.add_argument('-mode', type=str, help='rgb or flow')
-parser.add_argument('-save_model', type=str)
-parser.add_argument('-root', type=str)
-parser.add_argument('--num_class', type=int)
-
-args = parser.parse_args()
-
-torch.manual_seed(0)
-np.random.seed(0)
-
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-
 
 def run(configs,
         mode='rgb',
@@ -188,9 +171,23 @@ def run(configs,
 
 
 if __name__ == '__main__':
+    # 配置一下最初的状态设置
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    torch.manual_seed(0)
+    np.random.seed(0)
+
+    # 一些基本的变量名称
+
+    videofolder = '/home/mario/signdata/spbsl/normal'
+    samplepklfile = ''
+    
+
     # WLASL setting
-    mode = 'rgb'
-    root = {'word': '../../data/WLASL2000'}
+    
 
     save_model = 'checkpoints/'
     train_split = 'preprocess/nslt_2000.json'
