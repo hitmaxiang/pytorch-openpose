@@ -8,6 +8,7 @@ LastEditTime: 2021-01-11 16:26:30
 '''
 
 import os
+import re
 import cv2
 import joblib
 import utilmx
@@ -172,6 +173,44 @@ def CalculateRecallRate(annotationh5file, recordfile, best_k=1):
         print('the recall rate of %s is %d/%d = %f' % (key, correct, Number, rate))
 
 
+def CalculateRecallRate_allh5file(annotationh5file, h5recordfile):
+    recorddict = h5py.File(h5recordfile, 'r')
+    annotationfile = h5py.File(annotationh5file, 'r')
+
+    for word in annotationfile.keys():
+        RecallDict = {}
+        RecallDict['global'] = []
+
+        if word not in recorddict.keys():
+            continue
+        for indexkey in annotationfile[word].keys():
+            annotation = annotationfile[word][indexkey][:]
+            if annotation[0] == -1:  # negative
+                continue
+            real_begin, real_end = annotation[1:3]
+            
+            RecallDict['global'].append(0)
+            for m_len in recorddict[word].keys():
+                if re.match(r'^\d+$', m_len) is None:
+                    continue
+                if m_len not in RecallDict.keys():
+                    RecallDict[m_len] = []
+                RecallDict[m_len].append(0)
+                locs = recorddict[word][m_len]['locs']
+                begin = locs[int(indexkey)]
+                end = begin + int(m_len)
+                if not(end < real_begin or begin > real_end):
+                    RecallDict['global'][-1] = 1
+                    RecallDict[m_len][-1] = 1
+    
+        for key in RecallDict.keys():
+            correct = sum(RecallDict[key])
+            Number = len(RecallDict[key])
+            if Number == 0:
+                break
+            rate = correct/Number
+            print('word: %s --> the recall rate of %s is %d/%d = %f' % (word, key, correct, Number, rate))
+
 def locatIndexByVideoKeyoffset(h5pyfile, worddictpath, subdictpath, outpath):
     worddict = WordsDict(worddictpath, subdictpath)
     annotionfile = h5py.File(h5pyfile, 'r')
@@ -244,6 +283,9 @@ def RunTest(testcode, server):
     shapeletrecordED = '../data/spbsl/shapeletED.rec'
     shapeletrecordNet = '../data/spbsl/shapeletNetED.rec'
 
+    h5shapeletrecordED = '../data/spbsl/shapeletED.hdf5'
+    h5shapeletrecordNet = '../data/spbsl/shapeletNetED.hdf5'
+
     # groud truth of the database
     annotationpath = '../gui/annotation.hdf5'
     wordlistpath = '../gui/wordlist.txt'
@@ -291,11 +333,20 @@ def RunTest(testcode, server):
         imgpath = '../data/img/keypoints_pose_18.png'
         outpath = '../data/img/keypoints_pose.png'
         AnticolorOfPicture(imgpath, outpath, mode=1)
+    
+    elif testcode == 4:
+        # calculate the recall rate with the all hdf5 file
+        newannotationfile = '../data/spbsl/annotationindex.hdf5'
+        if not os.path.exists(newannotationfile):
+            locatIndexByVideoKeyoffset(annotationpath, worddictpath, subtitledictpath, newannotationfile)
+        CalculateRecallRate_allh5file(newannotationfile, h5shapeletrecordED)
+        # CalculateRecallRate_allh5file(newannotationfile, h5shapeletrecordNet)
+
 
         
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=3)
+    Parser.add_argument('-t', '--testcode', type=int, default=4)
     Parser.add_argument('-s', '--server', action='store_true')
 
     args = Parser.parse_args()

@@ -40,15 +40,25 @@ class ShapeletsFinding():
         self.min_m = 15
         self.max_m = 40
         self.stride_m = 2
+
+        # 选取样本时候的拓宽范围
+        self.delayfx = 1.5
+
+        # 默认的输出存储文件
+        self.shapeletEDfile = '../data/spbsl/shapeletED.hdf5'
+        self.shapeletNetfile = '../data/spbsl/shapeletNetED.hdf5'
     
-    def SetDataMode(self, datamode=None, featuremode=None, normmode=None, min_m=None, max_m=None, stride_m=None):
-        datadict = {'datamode':self.datamode, 'featuremode}
-        if datamode is not None:
-            self.datamode = datamode
-        if featuremode is not None:
-            self.featuremode = None
-        if normmode is not None:
-            self.normmode = normmode
+    def SetDataMode(self, **args):
+        modevaluedict = {'datamode': self.datamode, 'featuremode': self.featuremode,
+                         'normmode': self.normmode, 'min_m': self.min_m,
+                         'max_m': self.max_m, 'stride_m': self.stride_m,
+                         'delayfx': self.delayfx, 'shapeletEDfile': self.shapeletEDfile,
+                         'shapeletNetfile': self.shapeletNetfile}
+                         
+        definedkeys = modevaluedict.keys()
+        for key, value in args:
+            if key in definedkeys:
+                modevaluedict[key] = value
 
     def Getsamples(self, word):
         '''
@@ -59,7 +69,7 @@ class ShapeletsFinding():
         '''
         # 抽样得到 pos 以及 neg 的样本的索引以及clip位置
         # sample_indexes 的格式为：[videokey(str), begin, end, label]
-        sample_indexes = self.cls_worddict.ChooseSamples(word, 1.5)
+        sample_indexes = self.cls_worddict.ChooseSamples(word, self.delayfx)
         samples = []
 
         # 从 motiondict 中 按照上面得到的索引位置提取数据
@@ -79,126 +89,140 @@ class ShapeletsFinding():
             samples.append(clip_data)
         return samples, sample_indexes
     
-    def train(self, word=None, method=2, h5recordpath='../data/shapeletrecord.hdf5', overwrite=False):
-
-        if refrecordfile is None:
-            refrecordfile = '../data/spbsl/shapeletED.rec'
-        
-        if method == 1:
-            self.current_shapelet_dict = utilmx.ShapeletRecords().ReadRecordInfo(refrecordfile)
-            self.recodfilepath = '../data/spbsl/shapeletNetED.rec'
+    def WriteRecords2File(self, key, data, shape, dtype):
+        with h5py.File(self.h5recordpath, 'a') as f:
+            if key in f.keys():
+                if f[key][:].shape != shape:
+                    del f[key]
+                    f.create_dataset(key, shape, dtype=dtype)
+            else:
+                f.create_dataset(key, shape, dtype=dtype)
+            f[key][:] = data
+    
+    def train(self, word=None, method=2, h5recordpath=None, overwrite=False):
+        # 确定最终的存储文件
+        if h5recordpath is not None:
+            self.h5recordpath = h5recordpath
+        elif method == 1:
+            self.h5recordpath = self.shapeletNetfile
         elif method == 2:
-            self.recodfilepath = '../data/spbsl/shapeletED.rec'
-        else:
-            self.recodfilepath = '../data/spbsl/shapeletany.rec'
-        
-        # 可以定制输出结果以及是否需要归一化
-        if recordfile is not None:
-            self.recodfilepath = recordfile
-        self.neednorm = normed
+            self.h5recordpath = self.shapeletEDfile
 
+        self.overwrite = overwrite
+        
+        # 确定要提取的 given Word
         if word is None:
             words = self.cls_worddict.worddict.keys()
         elif isinstance(word, str):
             words = [word]
         elif isinstance(word, list):
             words = word
-        minlen, maxlen, stride = 15, 40, 2
 
-        if os.path.exists(self.recodfilepath):
-            trainedrecords = utilmx.ReadShapeletRecords(self.recodfilepath)
-        else:
-            trainedrecords = {}
+        minlen, maxlen, stride = self.min_m, self.max_m, self.stride_m
 
         for word in words:
             # 现阶段，对于sample特别多的先不分析
             if len(self.cls_worddict.worddict[word]) >= 500:
                 continue
-            if word in trainedrecords.keys():
-                if len(trainedrecords[word]) >= int((maxlen-minlen)/stride):
-                    continue
+            
+            write_mlen_list = []
+
+            with h5py.File(self.h5recordpath, 'a') as f:
+                if self.overwrite is True:
+                    del f[word]
+                # 判断要写的是否已经在文件中了
+                for m_len in range(minlen, maxlen, stride):
+                    groupkey = '%s/%d' % (word, m_len)
+                    if groupkey not in f.keys():
+                        write_mlen_list.append(m_len)
+            
+            # 如果都在文件中的话就进入下一个 Word， 否则的话进入到 shapelet 学习的阶段
+            if len(write_mlen_list) == 0:
+                continue
+            
             self.word = word
             samples, sample_indexes = self.Getsamples(word)
-
             # 为了保证完整的信息，这里将会把samples 准确的位置信息进行记录
+            posidxs = [x[:3] for x in sample_indexes if x[-1] == 1]
+            videokeys = [x[0] for x in posidxs]
+            clipidx = np.array([x[1:] for x in posidxs]).astype(np.int16)
 
+            strdt = h5py.string_dtype(encoding='utf-8')
+            pos_num = len(videokeys)
 
-            # write the base line info
-            with open(self.recodfilepath, 'a') as f: 
-                for info in sample_indexes:
-                    if sample_indexes[-1] == 1:
-                        f.write('%s-%d\t' % (info[0], info[1]))
-                f.write('\n')
-            
-            for m in range(minlen, maxlen, stride):
-                if word in trainedrecords.keys():
-                    if m in trainedrecords[word]:
-                        continue
-                if method == 0:
-                    # self.FindShaplets_dtw_methods(samples, sample_indexes, m)
+            # 写入每个 sample 的起始范围
+            idxkey = '%s/sampleidxs' % word
+            self.WriteRecords2File(idxkey, clipidx, (pos_num, 2), dtype=np.int16)
+            # 写入每个 sample 所在的 videokey
+            vdokey = '%s/videokeys' % word
+            self.WriteRecords2File(vdokey, videokeys, (pos_num, ), dtype=strdt)
+            # 写入 word 的 loginfo
+            infokey = '%s/loginfo' % word
+            infomsg = 'fx:%.2f-datamode:%s-featuremode:%d' % (self.delayfx, self.datamode, self.featuremode)
+            self.WriteRecords2File(infokey, infomsg, (1, ), dtype=strdt)
 
-                    pass
-                elif method == 1:
-                    self.FindShaplets_Net_ED(samples, sample_indexes, m)
-                    pass
+            # Do the training loop
+            for m_len in write_mlen_list:
+
+                if method == 1:
+                    # using the shapeletnet to learn the shapelet
+                    self.FindShaplets_Net_ED(samples, sample_indexes, m_len)
+                
                 elif method == 2:
-                    # self.FindShaplets_brute_force_ED(samples, sample_indexes, m)
-                    self.FindShaplets_brute_force_ED(samples, sample_indexes, m)
+                    # using the matrix brute force to find the shapelet
+                    self.FindShaplets_brute_force_ED(samples, sample_indexes, m_len)
     
+    # 使用蛮力 matrix profile 的方式进行 shapelet 的 finding
     def FindShaplets_brute_force_ED(self, samples, sample_indexes, m_len):
-        
         begin_time = time.time()
         shapeletmodel = SM.ShapeletMatrixModel()
-        BestKshapelets = utilmx.Best_K_Items(K=10)
 
         # 对样本集合进行归一化处理
-        if self.neednorm:
+        if self.normmode:
             samples = PD.NormlizeData(samples, mode=1)
         
         labels = torch.tensor([x[-1] for x in sample_indexes])
         shapeletmodel.train(samples, labels, m_len)
 
-        # draw the result
-        locs = shapeletmodel.locs
-        shapindex = shapeletmodel.shapeindex
-        dis = shapeletmodel.dis
-        score = shapeletmodel.score
+        # get the training results
+        locs, dists = [], []
+        for i in range(len(sample_indexes)):
+            if sample_indexes[i][-1] == 1:
+                locs.append(shapeletmodel.locs[i])
+                dists.append(shapeletmodel.dis[i])
+        
+        locs = np.array(locs).astype(np.int16)
+        dists = np.array(dists).astype(np.float32)
+        shapelet = np.array([shapeletmodel.shapeindex]).astype(np.int16)
+        score = np.array([shapeletmodel.score]).astype(np.float32)
 
-        key = '%s-framindex:%d-offset:%d-m_len:%d' % (sample_indexes[shapindex][0],
-                                                      sample_indexes[shapindex][1],
-                                                      locs[shapindex],
-                                                      m_len)
+        # construct the database keyword
+        basekey = '%s/%d/' % (self.word, m_len)
+        locskey = basekey + 'locs'
+        shapletkey = basekey + 'shapelet'
+        distkey = basekey + 'dists'
+        scorekey = basekey + 'score'
 
-        validloc = [loc for i, loc in enumerate(locs) if sample_indexes[i][-1] == 1]
+        pos_num = len(locs)
+        # write the results into the recordfile
+        self.WriteRecords2File(locskey, locs, (pos_num, ), dtype=np.int16)
+        self.WriteRecords2File(distkey, dists, (pos_num, ), dtype=np.float32)
+        self.WriteRecords2File(shapletkey, shapelet, (1, ), dtype=np.int16)
+        self.WriteRecords2File(scorekey, score, (1, ), dtype=np.float32)
 
-        BestKshapelets.insert(score, [key, validloc])
-        # shapelet = samples[shapindex][locs[shapindex]:locs[shapindex]+m_len, 0]
-        Headerinfo = 'the word:%s with m length: %d' % (self.word, m_len)
-        BestKshapelets.wirteinfo(Headerinfo, self.recodfilepath, 'a')
-
-        # samplenum = len(samples)
-        # Y = [x[-1] for x in sample_indexes]
-        # plt.switch_backend('agg')
-
-        # plt.figure(0)
-        # for i in range(samplenum):
-        #     if Y[i] == 1:
-        #         plt.scatter([i], [dis[i].item()], c='r', marker='o')
-        #     else:
-        #         plt.scatter([i], [dis[i].item()], c='g', marker='*')
-        # plt.savefig('../data/spbsl/img/%s-%d-dis.jpg' % (self.word, m_len))
         print('the %d word %s of %d length cost %f seconds with score %f' % (len(samples)//2,
                                                                              self.word,
                                                                              m_len,
                                                                              time.time()-begin_time,
-                                                                             score))
+                                                                             score[0]))
 
+    # 使用 shapeletlearning net 的方式进行 shapelet 的 learning
     def FindShaplets_Net_ED(self, samples, sample_indexes, m_len):
         # 对样本集合进行归一化处理
-        if self.neednorm:
+        if self.normmode:
             samples = PD.NormlizeData(samples, mode=1)
 
-        BestKshapelets = utilmx.Best_K_Items(K=10)
+        # BestKshapelets = utilmx.Best_K_Items(K=10)
 
         lenghts = [len(x) for x in samples]
         N, T, D = len(samples), max(lenghts), samples[0].shape[1]
@@ -211,8 +235,18 @@ class ShapeletsFinding():
         # Set the default query
         valid = False
         try:
-            shapelet = self.current_shapelet_dict[self.word][str(m_len)]['shapelet']
-            videonum, frameindex, offset, length, score = shapelet[0]
+            # 根据 brute force 的结果为 net 的参数进行初始化
+            if os.path.exists(self.shapeletEDfile):
+                with h5py.File(self.shapeletEDfile, 'r') as f:
+                    locskey = '%s/%d/locs' % (self.word, m_len)
+                    shapeidxkey = '%s/%d/shapelet' % (self.word, m_len)
+                    idxkey = '%s/sampleidxs' % self.word
+                    vdokey = '%s/videokeys' % self.word
+                    # 获取 found shapelet information
+                    shapeletidx = f[shapeidxkey][0]
+                    offset = f[locskey][shapeletidx]
+                    videonum = f[vdokey][shapeletidx]
+                    frameindex = f[idxkey][shapeletidx, 0]
 
             for i in range(len(sample_indexes)):
                 if sample_indexes[i][-1] == 1:
@@ -222,7 +256,7 @@ class ShapeletsFinding():
                         valid = True
                         break
         except Exception:
-            print('the %s is not in the shapeletED record')
+            print('the %s is not in the %s file' % self.shapeletEDfile)
         if valid is True:
             index = i
             bindex = offset
@@ -240,24 +274,38 @@ class ShapeletsFinding():
 
         Net.train(X, Y)
 
-        dis, locs, score = Net(X, Y)
-        # loc, dic = Net.localizeshape(X)
-        # print(loc)
-        if score > 0:
-            dis = dis.cpu().numpy()
-            locs = locs.cpu().numpy()
-
-            key = '%s-framindex:%d-offset:%d-m_len:%d' % (sample_indexes[0][0],
-                                                          sample_indexes[0][1],
-                                                          locs[0],
-                                                          m_len)
-
-            BestKshapelets.insert(score, [key, locs])
-            # shapelet = samples[shapindex][locs[shapindex]:locs[shapindex]+m_len, 0]
-            Headerinfo = 'the word:%s with m length: %d' % (self.word, m_len)
-            BestKshapelets.wirteinfo(Headerinfo, self.recodfilepath, 'a')
-
+        # get the trained data
+        distance, location, score = Net(X, Y)
+        distance = distance.cpu().numpy()
+        location = location.cpu().numpy()
+        shapelet = Net.query.detach().cpu().numpy()
         
+        locs, dists = [], []
+        for i in range(len(sample_indexes)):
+            if sample_indexes[i][-1] == 1:
+                locs.append(location[i])
+                dists.append(distance[i])
+        
+        locs = np.array(locs).astype(np.int16)
+        dists = np.array(dists).astype(np.float32)
+        shapelet = shapelet.astype(np.float32)
+        score = np.array([score]).astype(np.float32)
+
+        # construct the database keyword
+        basekey = '%s/%d/' % (self.word, m_len)
+        locskey = basekey + 'locs'
+        shapletkey = basekey + 'shapelet'
+        distkey = basekey + 'dists'
+        scorekey = basekey + 'score'
+
+        pos_num = len(locs)
+        # write the results into the recordfile
+        self.WriteRecords2File(locskey, locs, (pos_num, ), dtype=np.int16)
+        self.WriteRecords2File(distkey, dists, (pos_num, ), dtype=np.float32)
+        self.WriteRecords2File(shapletkey, shapelet, shapelet.shape, dtype=np.float32)
+        self.WriteRecords2File(scorekey, score, (1, ), dtype=np.float32)
+
+
 def RunTest(testcode, method, retrain):
     motionhdf5filepath = '../data/spbsl/motiondata.hdf5'
     # motionsdictpath = '../data/spbsl/motionsdic.pkl'
@@ -288,12 +336,9 @@ def RunTest(testcode, method, retrain):
                 pass
             
         cls_shapelet = ShapeletsFinding(motionhdf5filepath, worddictpath, subtitledictpath)
-        if method == 2:
-            cls_shapelet.train(words, method=method, recordfile=recordfile, normed=False)
-        elif method == 1:
-            cls_shapelet.train(words, method=method, recordfile=recordfile, normed=False, refrecordfile=EDrecordfile)
+        cls_shapelet.train(words, method=method)
 
-        PE.CalculateRecallRate(annotationdictpath, recordfile)
+        # PE.CalculateRecallRate(annotationdictpath, recordfile)
         
         
 if __name__ == "__main__":

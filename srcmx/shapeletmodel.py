@@ -30,7 +30,7 @@ class ShapeletNetModel(nn.Module):
             _, predicts = torch.max(self.CLS(DIS), dim=1)
             score = int((predicts == Y).sum())/Y.shape[0]
         
-        return DIS[:, 0], loc, score
+        return DIS[:, 0], loc[:, 0], score
 
     def forward(self, X, label):
         # X 的 shape 应该是 （Batch x D x T）
