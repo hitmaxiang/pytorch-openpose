@@ -15,71 +15,29 @@ import numpy as np
 import torch.nn.functional as F
 from pytorch_i3d import InceptionI3d
 
-# from nslt_dataset_all import NSLT as Dataset
-from datasets.nslt_dataset_all import NSLT as Dataset
+from datasetcreate import BSLDataSet as Dataset
+from datasetcreate import load_rgb_frames_from_video
 import cv2
 
 
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
-parser = argparse.ArgumentParser()
-parser.add_argument('-mode', type=str, help='rgb or flow')
-parser.add_argument('-save_model', type=str)
-parser.add_argument('-root', type=str)
+def run(videodir, samplepklfile, recpoint, init_lr=0.1, max_steps=64e3, batch_size=3 * 15, save_model='', weights=None):
 
-args = parser.parse_args()
-
-
-def load_rgb_frames_from_video(video_path, start=0, num=-1):
-    vidcap = cv2.VideoCapture(video_path)
-    # vidcap = cv2.VideoCapture('/home/dxli/Desktop/dm_256.mp4')
-
-    frames = []
-
-    vidcap.set(cv2.CAP_PROP_POS_FRAMES, start)
-    if num == -1:
-        num = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    for offset in range(num):
-        success, img = vidcap.read()
-
-        w, h, c = img.shape
-        sc = 224 / w
-        img = cv2.resize(img, dsize=(0, 0), fx=sc, fy=sc)
-
-        img = (img / 255.) * 2 - 1
-
-        frames.append(img)
-
-    return torch.Tensor(np.asarray(frames, dtype=np.float32))
-
-
-def run(init_lr=0.1,
-        max_steps=64e3,
-        mode='rgb',
-        root='/ssd/Charades_v1_rgb',
-        train_split='charades/charades.json',
-        batch_size=3 * 15,
-        save_model='',
-        weights=None):
-    # setup dataset
+    # 设置图片数据集的处理变换
     test_transforms = transforms.Compose([videotransforms.CenterCrop(224)])
 
-    val_dataset = Dataset(train_split, 'test', root, mode, test_transforms)
+    val_dataset = Dataset(videodir, samplepklfile, 'test', recpoint, transforms=test_transforms)
+    # val_dataset = Dataset(train_split, 'test', root, mode, test_transforms)
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=1,
                                                  shuffle=False, num_workers=2,
                                                  pin_memory=False)
 
     dataloaders = {'test': val_dataloader}
-    datasets = {'test': val_dataset}
+    # datasets = {'test': val_dataset}
 
     # setup the model
-    if mode == 'flow':
-        i3d = InceptionI3d(400, in_channels=2)
-        i3d.load_state_dict(torch.load('weights/flow_imagenet.pt'))
-    else:
-        i3d = InceptionI3d(400, in_channels=3)
-        i3d.load_state_dict(torch.load('weights/rgb_imagenet.pt'))
+    i3d = InceptionI3d(400, in_channels=3)
+    i3d.load_state_dict(torch.load('weights/rgb_imagenet.pt'))
+
     i3d.replace_logits(num_classes)
     i3d.load_state_dict(torch.load(weights))  # nslt_2000_000700.pt nslt_1000_010800 nslt_300_005100.pt(best_results)  nslt_300_005500.pt(results_reported) nslt_2000_011400
     i3d.cuda()
@@ -100,7 +58,7 @@ def run(init_lr=0.1,
     top10_tp = np.zeros(num_classes, dtype=np.int)
 
     for data in dataloaders["test"]:
-        inputs, labels, video_id = data  # inputs: b, c, t, h, w
+        inputs, labels = data  # inputs: b, c, t, h, w
 
         per_frame_logits = i3d(inputs)
 
@@ -242,7 +200,7 @@ def run_on_tensor(weights, ip_tensor, num_classes):
     predictions = predictions.transpose(2, 1)
     out_labels = np.argsort(predictions.cpu().detach().numpy()[0])
 
-    arr = predictions.cpu().detach().numpy()[0,:,0].T
+    arr = predictions.cpu().detach().numpy()[0, :, 0].T
 
     plt.plot(range(len(arr)), F.softmax(torch.from_numpy(arr), dim=0).numpy())
     plt.show()
@@ -260,6 +218,10 @@ def get_slide_windows(frames, window_size, stride=1):
 if __name__ == '__main__':
     # ================== test i3d on a dataset ==============
     # need to add argparse
+    
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+
     mode = 'rgb'
     num_classes = 2000
     save_model = './checkpoints/'

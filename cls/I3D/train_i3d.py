@@ -1,4 +1,5 @@
 import os
+import joblib
 import argparse
 
 import torch
@@ -20,41 +21,34 @@ from pytorch_i3d import InceptionI3d
 from datasetcreate import BSLDataSet as Dataset
 
 
-def run(configs,
-        mode='rgb',
-        root='/ssd/Charades_v1_rgb',
-        train_split='charades/charades.json',
-        save_model='',
-        weights=None):
+def run(configs, videodir, samplepklfile, save_model, recpoint, weights=None):
     print(configs)
 
-    # setup dataset
+    # 构建图片的处理变换
     train_transforms = transforms.Compose([videotransforms.RandomCrop(224),
                                            videotransforms.RandomHorizontalFlip(), ])
     test_transforms = transforms.Compose([videotransforms.CenterCrop(224)])
 
-    dataset = Dataset(train_split, 'train', root, mode, train_transforms)
+    # 构建训练数据库和测试数据库
+    dataset = Dataset(videodir, samplepklfile, 'train', recpoint, train_transforms)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=configs.batch_size, shuffle=True, num_workers=0,
                                              pin_memory=True)
 
-    val_dataset = Dataset(train_split, 'test', root, mode, test_transforms)
+    val_dataset = Dataset(videodir, samplepklfile, 'test', recpoint, test_transforms)
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=configs.batch_size, shuffle=True, num_workers=2,
                                                  pin_memory=False)
 
     dataloaders = {'train': dataloader, 'test': val_dataloader}
-    datasets = {'train': dataset, 'test': val_dataset}
+    # datasets = {'train': dataset, 'test': val_dataset}
 
-    # setup the model
-    if mode == 'flow':
-        i3d = InceptionI3d(400, in_channels=2)
-        i3d.load_state_dict(torch.load('weights/flow_imagenet.pt'))
-    else:
-        i3d = InceptionI3d(400, in_channels=3)
-        i3d.load_state_dict(torch.load('weights/rgb_imagenet.pt'))
+    # 构建 I3D 的网络模型
+    i3d = InceptionI3d(400, in_channels=3)
+    i3d.load_state_dict(torch.load('weights/rgb_imagenet.pt'))
 
-    num_classes = dataset.num_classes
+    # 获取数据库的类别数目
+    sample_records = joblib.load(samplepklfile)
+    num_classes = len(set(sample_records[:, 0]))
     i3d.replace_logits(num_classes)
-
     if weights:
         print('loading weights {}'.format(weights))
         i3d.load_state_dict(torch.load(weights))
@@ -62,6 +56,7 @@ def run(configs,
     i3d.cuda()
     i3d = nn.DataParallel(i3d)
 
+    # 配置训练学习的超参数
     lr = configs.init_lr
     weight_decay = configs.adam_weight_decay
     optimizer = optim.Adam(i3d.parameters(), lr=lr, weight_decay=weight_decay)
@@ -71,7 +66,8 @@ def run(configs,
     epoch = 0
 
     best_val_score = 0
-    # train it
+    
+    # 开始训练
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.3)
     while steps < configs.max_steps and epoch < 400:  # for epoch in range(num_epochs):
         print('Step {}/{}'.format(steps, configs.max_steps))
@@ -80,12 +76,11 @@ def run(configs,
         epoch += 1
         # Each epoch has a training and validation phase
         for phase in ['train', 'test']:
-            collected_vids = []
-
             if phase == 'train':
                 i3d.train(True)
             else:
-                i3d.train(False)  # Set model to evaluate mode
+                # Set model to evaluate mode
+                i3d.train(False)  
 
             tot_loss = 0.0
             tot_loc_loss = 0.0
@@ -97,12 +92,7 @@ def run(configs,
             # Iterate over data.
             for data in dataloaders[phase]:
                 num_iter += 1
-                # get the inputs
-                if data == -1: # bracewell does not compile opencv with ffmpeg, strange errors occur resulting in no video loaded
-                    continue
-
-                # inputs, labels, vid, src = data
-                inputs, labels, vid = data
+                inputs, labels = data
 
                 # wrap them in Variable
                 inputs = inputs.cuda()
@@ -181,21 +171,18 @@ if __name__ == '__main__':
     np.random.seed(0)
 
     # 一些基本的变量名称
-
     videofolder = '/home/mario/signdata/spbsl/normal'
     samplepklfile = ''
-    
-
-    # WLASL setting
-    
 
     save_model = 'checkpoints/'
-    train_split = 'preprocess/nslt_2000.json'
+    recpoint = [(700, 100), (1280, 720)]
 
     # weights = 'archived/asl2000/FINAL_nslt_2000_iters=5104_top1=32.48_top5=57.31_top10=66.31.pt'
     weights = None
-    config_file = 'configfiles/asl2000.ini'
-
+    config_file = 'configfiles/bsl100.ini'
     configs = Config(config_file)
-    print(root, train_split)
-    run(configs=configs, mode=mode, root=root, save_model=save_model, train_split=train_split, weights=weights)
+
+    print(videofolder, samplepklfile)
+    # run(configs=configs, mode=mode, root=root, save_model=save_model, train_split=train_split, weights=weights)
+    run(configs=configs, videodir=videofolder, samplepklfile=samplepklfile,
+        save_model=save_model, recpoint=recpoint, weights=weights)

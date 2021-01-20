@@ -77,7 +77,7 @@ def make_dataset(samplepklfile, splitmode):
         elif splitmode == 'test':
             if group != 2:
                 continue
-        # 构建 label 数据
+        # 构建 label 数据, with the shape of (time x n_classes)
         label = np.zeros((num, num_classes), np.float32)
         label[:, category] = 1
 
@@ -89,6 +89,7 @@ def make_dataset(samplepklfile, splitmode):
 class BSLDataSet(data_utl.Dataset):
 
     def __init__(self, videodir, samplepklfile, splitmode, recpoint, transforms=None):
+        super().__init__()
         self.data = make_dataset(samplepklfile, splitmode)
         self.videodir = videodir
         self.recpoint = recpoint
