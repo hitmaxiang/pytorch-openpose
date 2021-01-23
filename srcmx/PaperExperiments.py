@@ -173,43 +173,75 @@ def CalculateRecallRate(annotationh5file, recordfile, best_k=1):
         print('the recall rate of %s is %d/%d = %f' % (key, correct, Number, rate))
 
 
-def CalculateRecallRate_allh5file(annotationh5file, h5recordfile):
+def CalculateRecallRate_allh5file(annotationh5file, h5recordfile, threhold=0):
     recorddict = h5py.File(h5recordfile, 'r')
     annotationfile = h5py.File(annotationh5file, 'r')
 
+    majorwords, minorwords = [], []
     for word in annotationfile.keys():
-        RecallDict = {}
-        RecallDict['global'] = []
+        posnum, negnum = 0, 0
+        for idxkey in annotationfile[word].keys():
+            label = annotationfile[word][idxkey][0]
+            if label == -1:
+                negnum += 1
+            else:
+                posnum += 1
+            
+        if posnum/(negnum + posnum) >= threhold:
+            majorwords.append(word)
+        else:
+            minorwords.append(word)
 
+    AllDict = {}
+    AllDict['global'] = []
+    AllDict['major'] = {}
+    AllDict['major']['global'] = []
+    AllDict['minor'] = {}
+    AllDict['minor']['global'] = []
+
+    for word in annotationfile.keys():
         if word not in recorddict.keys():
             continue
-        for indexkey in annotationfile[word].keys():
-            annotation = annotationfile[word][indexkey][:]
-            if annotation[0] == -1:  # negative
+        
+        if word in majorwords:
+            group = 'major'
+        else:
+            group = 'minor'
+        
+        for idxkey in annotationfile[word].keys():
+            annodata = annotationfile[word][idxkey][:]
+            # negative
+            if annodata[0] == -1:
                 continue
-            real_begin, real_end = annotation[1:3]
+            real_begin, real_end = annodata[1:3]
+
+            AllDict['global'].append(0)
+            AllDict[group]['global'].append(0)
             
-            RecallDict['global'].append(0)
             for m_len in recorddict[word].keys():
                 if re.match(r'^\d+$', m_len) is None:
                     continue
-                if m_len not in RecallDict.keys():
-                    RecallDict[m_len] = []
-                RecallDict[m_len].append(0)
+                
+                if m_len not in AllDict[group].keys():
+                    AllDict[group][m_len] = []
+                    AllDict[group][m_len].append(0)
+                
                 locs = recorddict[word][m_len]['locs']
-                begin = locs[int(indexkey)]
+                begin = locs[int(idxkey)]
                 end = begin + int(m_len)
                 if not(end < real_begin or begin > real_end):
-                    RecallDict['global'][-1] = 1
-                    RecallDict[m_len][-1] = 1
-    
-        for key in RecallDict.keys():
-            correct = sum(RecallDict[key])
-            Number = len(RecallDict[key])
-            if Number == 0:
-                break
-            rate = correct/Number
-            print('word: %s --> the recall rate of %s is %d/%d = %f' % (word, key, correct, Number, rate))
+                    AllDict['global'][-1] = 1
+                    AllDict[group][-1] = 1
+                    AllDict[group][m_len][-1] = 1
+
+    ratelist = AllDict['global']
+    print('the total global rate is %f' % sum(ratelist)/len(ratelist))
+    # list the information of majority words
+    for group in ['major', 'minor']:
+        for key in AllDict[group].keys():
+            ratelist = AllDict[group][key]
+            print('the %s group global rate of %s is %f' % (group, key, sum(ratelist)/len(ratelist)))
+
 
 def locatIndexByVideoKeyoffset(h5pyfile, worddictpath, subdictpath, outpath):
     worddict = WordsDict(worddictpath, subdictpath)

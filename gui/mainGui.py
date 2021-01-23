@@ -55,9 +55,14 @@ class MainWindow(QMainWindow):
         self.ReadWordListFromFile(wordlistfile)
         # 搜索框： 信号-槽
         self.ui.wordexplore.textChanged.connect(self.FilterWordList)
+        self.ui.wordexplore.returnPressed.connect(self.WordEntered)
         # 为 wordlist 设置右键函数
         self.ui.listWidget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.ui.listWidget.customContextMenuRequested.connect(self.RightMenu_wordlist)
+
+        # 设置 单击和双击 函数
+        self.ui.listWidget.itemClicked.connect(self.DisplaySelectedWord)
+        self.ui.listWidget.itemDoubleClicked.connect(self.DemoSelectedWord)
         
         # VideoPlayer 模块的初始化
 
@@ -83,6 +88,55 @@ class MainWindow(QMainWindow):
         self.VideoThread.StatesOutSignal.connect(self.UpdateDisplayparams)
         self.VideoThread.SampleInfoSignal.connect(self.UpdateSampleInfo)
     
+    @Slot()
+    def WordEntered(self):
+        word = self.ui.wordexplore.text()
+        if word not in self.wordlist:
+            msgBox = QMessageBox()
+            msgBox.setIcon(QMessageBox.Question)
+            msgBox.setText('输入提示?')
+            msgBox.setInformativeText('列表中没有该单词, 确认进行展示吗?')
+            msgBox.addButton(QMessageBox.Cancel)
+            accept_btn = msgBox.addButton('展示', QMessageBox.ActionRole)
+            added_btn = msgBox.addButton('加入列表', QMessageBox.ActionRole)
+            all_btn = msgBox.addButton('加入+展示', QMessageBox.ActionRole)
+            
+            msgBox.exec_()
+            clickbtn = msgBox.clickedButton()
+            if clickbtn == accept_btn:
+                self.DemonWord('samples', word)
+            elif clickbtn == added_btn:
+                self.wordlist.insert(0, word)
+                self.DisplayWordList(self.wordlist)
+            elif clickbtn == all_btn:
+                self.wordlist.insert(0, word)
+                self.DisplayWordList(self.wordlist)
+                self.DemonWord('samples', word)
+
+    @Slot()
+    def DemoSelectedWord(self, item):
+        word = item.text()
+        self.DemonWord('sample', word)
+
+    @Slot()
+    def DisplaySelectedWord(self, item):
+        word = item.text()
+        count = self.ui.listWidget.count()
+        cur_row = self.ui.listWidget.currentRow()
+
+        pos_num, neg_num = 0, 0
+        if word in self.h5annotation.keys():
+            for videokey in self.h5annotation[word].keys():
+                for offset in self.h5annotation[word][videokey]:
+                    data = self.h5annotation[word][videokey][offset]
+                    if data[0] == 1:
+                        pos_num += 1
+                    else:
+                        neg_num += 1
+        
+        annoinfo = '%s pos:%d/neg: %d [%d/%d]' % (word, pos_num, neg_num, cur_row, count)
+        self.ui.statusbar.showMessage(annoinfo)
+
     @Slot()
     def ReadWordListFromFile(self, file):
         wordlist = []
@@ -111,15 +165,17 @@ class MainWindow(QMainWindow):
     
     @Slot()
     def RightMenu_wordlist(self, pos):
-        word = self.ui.listWidget.itemAt(pos).text()
+        item = self.ui.listWidget.itemAt(pos)
         menu = QMenu()
-        menu.addAction('samples').triggered.connect(lambda: self.DemonWord('sample', word))
-        menu.addAction('shapelets').triggered.connect(lambda: self.DemonWord('shapelet', word))
-        menu.addSeparator()
+        if item is not None:
+            word = self.ui.listWidget.itemAt(pos).text()
+            menu.addAction('samples').triggered.connect(lambda: self.DemonWord('sample', word))
+            menu.addAction('shapelets').triggered.connect(lambda: self.DemonWord('shapelet', word))
+            menu.addAction('delAnntation').triggered.connect(lambda: self.DeleteAnnotation(word))
+            menu.addSeparator()
+
         menu.addAction('annotationlist').triggered.connect(lambda: self.WordListShow(1))
         menu.addAction('allwordlist').triggered.connect(lambda: self.WordListShow(0))
-        menu.addSeparator()
-        menu.addAction('delAnntation').triggered.connect(lambda: self.DeleteAnnotation(word))
         menu.exec_(self.ui.listWidget.mapToGlobal(pos))
     
     @Slot()
@@ -319,6 +375,7 @@ class MainWindow(QMainWindow):
         reply = magbox(self, '警告', '系统将退出，是否确认', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
         if reply == QMessageBox.Yes:
+            self.VideoThread.terminate()
             event.accept()
             self.h5annotation.close()
         else:
@@ -326,6 +383,7 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == "__main__":
+    import platform
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--server', action='store_true')
@@ -336,7 +394,10 @@ if __name__ == "__main__":
     if server is True:
         videodir = '/home/mario/signdata/spbsl/normal'
     else:
-        videodir = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
+        if platform.system().lower() == 'windows':
+            videodir = 'F:/signdata/normal/video'
+        else:
+            videodir = '/home/mario/sda/signdata/SPBSL/scenes/normal/video'
 
     worddictpath = '../data/spbsl/WordDict.pkl'
     subdictpath = '../data/spbsl/SubtitleDict.pkl'
