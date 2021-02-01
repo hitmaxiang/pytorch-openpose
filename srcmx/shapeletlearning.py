@@ -145,7 +145,7 @@ class ShapeletsFinding():
             # 为了保证完整的信息，这里将会把samples 准确的位置信息进行记录
             posidxs = [x[:3] for x in sample_indexes if x[-1] == 1]
             videokeys = [x[0] for x in posidxs]
-            clipidx = np.array([x[1:] for x in posidxs]).astype(np.int16)
+            clipidx = np.array([x[1:] for x in posidxs]).astype(np.int32)
 
             strdt = h5py.string_dtype(encoding='utf-8')
             pos_num = len(videokeys)
