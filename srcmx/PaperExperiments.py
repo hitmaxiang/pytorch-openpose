@@ -224,22 +224,24 @@ def CalculateRecallRate_allh5file(annotationh5file, h5recordfile, threhold=0):
                 
                 if m_len not in AllDict[group].keys():
                     AllDict[group][m_len] = []
-                    AllDict[group][m_len].append(0)
+                AllDict[group][m_len].append(0)
                 
                 locs = recorddict[word][m_len]['locs']
                 begin = locs[int(idxkey)]
                 end = begin + int(m_len)
                 if not(end < real_begin or begin > real_end):
                     AllDict['global'][-1] = 1
-                    AllDict[group][-1] = 1
+                    AllDict[group]['global'][-1] = 1
                     AllDict[group][m_len][-1] = 1
 
     ratelist = AllDict['global']
-    print('the total global rate is %f' % sum(ratelist)/len(ratelist))
+    print('the total global rate is %f' % (sum(ratelist)/len(ratelist)))
     # list the information of majority words
     for group in ['major', 'minor']:
         for key in AllDict[group].keys():
             ratelist = AllDict[group][key]
+            if len(ratelist) == 0:
+                continue
             print('the %s group global rate of %s is %f' % (group, key, sum(ratelist)/len(ratelist)))
 
 
@@ -263,6 +265,53 @@ def locatIndexByVideoKeyoffset(h5pyfile, worddictpath, subdictpath, outpath):
     annotionfile.close()
     newfile.close()
 
+
+def DistAnalysis(h5recordfile, h5annotationfile):
+    h5recfile = h5py.File(h5recordfile, mode='r')
+    h5annfile = h5py.File(h5annotationfile, mode='r')
+
+    m_len_pattern = r'^/d+$'
+
+    words = h5recfile.keys()
+    for word in words:
+        if word not in h5recfile.keys():
+            continue
+
+        idxkey = '%s/sampleidxs' % word
+        vdokey = '%s/videokeys' % word
+        rangeindexs = h5recfile[idxkey][:]
+        videoindexs = h5recfile[vdokey][:]
+
+        # get the corresponding relationship between record and annotation
+        Idxs, posidx, negidx, unknown = GetIdxofAnnotation(h5annfile[word], rangeindexs, videoindexs)
+
+        print()
+        
+
+def GetIdxofAnnotation(annogroup, rangelist, videolist):
+    IDX = []
+    Posidxs = set()
+    Negidxs = set()
+    for videokey in annogroup.keys():
+        for offset in annogroup[videokey].keys():
+            data = annogroup[videokey][offset]
+            IDX.append(-1)
+            for idx in range(len(videolist)):
+                if videolist[idx] == videokey and rangelist[idx][0] == int(offset):
+                    if data[0] == 1:
+                        Posidxs.add(idx)
+                    else:
+                        Negidxs.add(idx)
+                    IDX[-1] = idx
+                    break
+    Unknown = set()
+    for idx in range(len(videolist)):
+        if not (idx in Posidxs or idx in Negidxs):
+            Unknown.add(idx)
+    
+    return IDX, Posidxs, Negidxs, Unknown
+            
+                    
 
 def AnticolorOfPicture(imgpath, outpath=None, mode=0):
     if os.path.isfile(imgpath):
@@ -369,16 +418,20 @@ def RunTest(testcode, server):
     elif testcode == 4:
         # calculate the recall rate with the all hdf5 file
         newannotationfile = '../data/spbsl/annotationindex.hdf5'
+        # h5shapeletrecordED = '../data/spbsl/temprecord.hdf5'
         if not os.path.exists(newannotationfile):
             locatIndexByVideoKeyoffset(annotationpath, worddictpath, subtitledictpath, newannotationfile)
-        CalculateRecallRate_allh5file(newannotationfile, h5shapeletrecordED)
-        # CalculateRecallRate_allh5file(newannotationfile, h5shapeletrecordNet)
+        CalculateRecallRate_allh5file(newannotationfile, h5shapeletrecordED, 0.4)
+        CalculateRecallRate_allh5file(newannotationfile, h5shapeletrecordNet, 0.4)
+    
+    elif testcode == 5:
+        DistAnalysis(h5shapeletrecordED, annotationpath)
 
 
         
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=4)
+    Parser.add_argument('-t', '--testcode', type=int, default=5)
     Parser.add_argument('-s', '--server', action='store_true')
 
     args = Parser.parse_args()

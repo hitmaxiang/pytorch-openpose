@@ -113,11 +113,13 @@ class WordsDict():
         else:  # the default pos-tag is set to noun
             return wordnet.NOUN
 
-    def ChooseSamples(self, word, delayfx):
+    def ChooseSamples(self, word, delayfx, maxitems=500):
         begin_time = time.time()
         samples = []
         # 确定 positive samples 的 clip
         pos_instances = self.worddict[word]
+        pos_instances = pos_instances[:min(len(pos_instances), maxitems)]
+        
         for videokey, subindex in pos_instances:
             subtitledata = self.subtitledict[videokey]
             subinstance = subtitledata[subindex]

@@ -69,7 +69,7 @@ class ShapeletsFinding():
         '''
         # 抽样得到 pos 以及 neg 的样本的索引以及clip位置
         # sample_indexes 的格式为：[videokey(str), begin, end, label]
-        sample_indexes = self.cls_worddict.ChooseSamples(word, self.delayfx)
+        sample_indexes = self.cls_worddict.ChooseSamples(word, self.delayfx, maxitems=300)
         samples = []
 
         # 从 motiondict 中 按照上面得到的索引位置提取数据
@@ -122,13 +122,13 @@ class ShapeletsFinding():
 
         for word in words:
             # 现阶段，对于sample特别多的先不分析
-            if len(self.cls_worddict.worddict[word]) >= 500:
-                continue
+            # if len(self.cls_worddict.worddict[word]) >= 500:
+            #     continue
             
             write_mlen_list = []
 
             with h5py.File(self.h5recordpath, 'a') as f:
-                if self.overwrite is True:
+                if word in f.keys() and self.overwrite is True:
                     del f[word]
                 # 判断要写的是否已经在文件中了
                 for m_len in range(minlen, maxlen, stride):
@@ -152,7 +152,7 @@ class ShapeletsFinding():
 
             # 写入每个 sample 的起始范围
             idxkey = '%s/sampleidxs' % word
-            self.WriteRecords2File(idxkey, clipidx, (pos_num, 2), dtype=np.int16)
+            self.WriteRecords2File(idxkey, clipidx, (pos_num, 2), dtype=np.int32)
             # 写入每个 sample 所在的 videokey
             vdokey = '%s/videokeys' % word
             self.WriteRecords2File(vdokey, videokeys, (pos_num, ), dtype=strdt)
@@ -323,31 +323,29 @@ def RunTest(testcode, method, retrain):
     elif testcode == 1:
         with h5py.File(annotationdictpath, 'r') as f:
             words = list(f.keys())
-        EDrecordfile = '../data/spbsl/temprecord.rec'
-        Netrecordfile = '../data/spbsl/temprecordnet.rec'
-
-        if method == 2:
-            recordfile = EDrecordfile
-        elif method == 1:
-            recordfile = Netrecordfile
         
-        if retrain:
-            with open(recordfile, 'w') as f:
-                pass
+        # EDrecordfile = '../data/spbsl/temprecord.hdf5'
+        # Netrecordfile = '../data/spbsl/temprecordnet.hdf5'
+
+        # if method == 2:
+        #     recordfile = EDrecordfile
+        # elif method == 1:
+        #     recordfile = Netrecordfile
             
         cls_shapelet = ShapeletsFinding(motionhdf5filepath, worddictpath, subtitledictpath)
-        cls_shapelet.train(words, method=method)
+        cls_shapelet.train(words, method=method, overwrite=retrain)
 
+        # PE.CalculateRecallRate_allh5file(annotationdictpath, recordfile)
         # PE.CalculateRecallRate(annotationdictpath, recordfile)
         
         
 if __name__ == "__main__":
-    # import os
-    # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--testcode', type=int, default=1)
     parser.add_argument('-r', '--retrain', action='store_true')
-    parser.add_argument('-m', '--method', type=int, default=1)
+    parser.add_argument('-m', '--method', type=int, default=2)
     args = parser.parse_args()
     testcode = args.testcode
     retrain = args.retrain
