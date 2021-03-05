@@ -14,6 +14,7 @@ import re
 import math
 import bisect
 import cv2
+import h5py
 import torch
 import scipy
 import matplotlib
@@ -535,6 +536,18 @@ def DrawPose(img, bodypose=None, handpeaks=None):
         img = draw_handpose_by_opencv(img, handpeaks)
 
     return img
+
+
+#  向一个 hdf5 写入一个关键词的数据
+def WriteRecords2File(h5filepath, key, data, shape, dtype):
+    with h5py.File(h5filepath, 'a') as f:
+        if key in f.keys():
+            if f[key][:].shape != shape or f[key][:].dtype != dtype:
+                del f[key]
+                f.create_dataset(key, shape, dtype=dtype)
+        else:
+            f.create_dataset(key, shape, dtype=dtype)
+        f[key][:] = data
 
 
 if __name__ == "__main__":

@@ -10,7 +10,6 @@ LastEditTime: 2021-01-11 16:26:30
 import os
 import re
 import cv2
-import joblib
 import utilmx
 import h5py
 import argparse
@@ -113,84 +112,9 @@ def WordFreqStatistics(recordfile, wordlistfile, wantnum):
     plt.savefig('../data/img/wordfreq.jpg')
 
 
-def ChooseAnnotatedWordFromRecord(recordfile, outname, thre=20, number=1000):
-    recordinfodict = utilmx.ShapeletRecords().ReadRecordInfo(recordfile)
-    wordlist = []
-    
-    for word in recordinfodict.keys():
-        bestscore = 0
-        for m_len in recordinfodict[word].keys():
-            for shapelet in recordinfodict[word][m_len]['shapelet']:
-                bestscore = max(bestscore, shapelet[-1])
-        if len(recordinfodict[word][m_len]['loc'][0]) >= thre * 2:
-            wordlist.append([word, bestscore])
-
-    wordlist.sort(key=lambda item: item[-1], reverse=True)
-
-    chooseword = [x[0] for x in wordlist[:min(len(wordlist), number)]]
-    
-    with open(outname, 'w') as f:
-        for word in chooseword:
-            f.write('%s\n' % word)
-
-
-def CalculateRecallRate(annotationh5file, recordfile, best_k=1):
-    recorddict = utilmx.ShapeletRecords().ReadRecordInfo(recordfile)
+def CalculateRecallRate_h5file(annotationh5file, h5recordfile, threhold=0, sigma=0):
+    recordfile = h5py.File(h5recordfile, 'r')
     annotationfile = h5py.File(annotationh5file, 'r')
-
-    RecallDict = {}
-    RecallDict['global'] = []
-    for word in annotationfile.keys():
-        if word not in recorddict.keys():
-            continue
-        for indexkey in annotationfile[word].keys():
-            annotation = annotationfile[word][indexkey][:]
-            if annotation[0] == -1:  # negative
-                continue
-            real_begin, real_end = annotation[1:3]
-            
-            RecallDict['global'].append(0)
-            for m_len in recorddict[word].keys():
-                if m_len not in RecallDict.keys():
-                    RecallDict[m_len] = []
-
-                RecallDict[m_len].append(0)
-
-                locs = recorddict[word][m_len]['loc']
-                # 针对的是每个Word每个m长度下的最优的 k 个结果
-                for loc in locs[:min(best_k, len(locs))]:
-                    begin = loc[int(indexkey)]
-                    end = begin + int(m_len)
-                    if not(end < real_begin or begin > real_end):
-                        RecallDict['global'][-1] = 1
-                        RecallDict[m_len][-1] = 1
-                        break
-    
-    for key in RecallDict.keys():
-        correct = sum(RecallDict[key])
-        Number = len(RecallDict[key])
-        rate = correct/Number
-        print('the recall rate of %s is %d/%d = %f' % (key, correct, Number, rate))
-
-
-def CalculateRecallRate_allh5file(annotationh5file, h5recordfile, threhold=0):
-    recorddict = h5py.File(h5recordfile, 'r')
-    annotationfile = h5py.File(annotationh5file, 'r')
-
-    majorwords, minorwords = [], []
-    for word in annotationfile.keys():
-        posnum, negnum = 0, 0
-        for idxkey in annotationfile[word].keys():
-            label = annotationfile[word][idxkey][0]
-            if label == -1:
-                negnum += 1
-            else:
-                posnum += 1
-            
-        if posnum/(negnum + posnum) >= threhold:
-            majorwords.append(word)
-        else:
-            minorwords.append(word)
 
     AllDict = {}
     AllDict['global'] = []
@@ -199,26 +123,35 @@ def CalculateRecallRate_allh5file(annotationh5file, h5recordfile, threhold=0):
     AllDict['minor'] = {}
     AllDict['minor']['global'] = []
 
+    # 为确定每个positive 样本是否被找到
     for word in annotationfile.keys():
-        if word not in recorddict.keys():
+        if word not in recordfile.keys():
             continue
-        
-        if word in majorwords:
+        idxkey = '%s/sampleidxs' % word
+        vdokey = '%s/videokeys' % word
+        rangeindexs = recordfile[idxkey][:]
+        videoindexs = recordfile[vdokey][:]
+
+        # get the corresponding relationship between record and annotation
+        Idxs = GetIdxofAnnotation(annotationfile[word], rangeindexs, videoindexs)
+        Posidxs = [x for x in Idxs if x[-2] == 1]
+        ratio = len(Posidxs)/len(Idxs)
+
+        if ratio >= threhold:
             group = 'major'
         else:
             group = 'minor'
-        
-        for idxkey in annotationfile[word].keys():
-            annodata = annotationfile[word][idxkey][:]
-            # negative
-            if annodata[0] == -1:
-                continue
+
+        # 计算positive sequences 被找到的概率
+        for item in Posidxs:
+            videokey, offset, label, idx = item
+            annodata = annotationfile[word][videokey][offset][:]
             real_begin, real_end = annodata[1:3]
 
             AllDict['global'].append(0)
             AllDict[group]['global'].append(0)
-            
-            for m_len in recorddict[word].keys():
+
+            for m_len in recordfile[word].keys():
                 if re.match(r'^\d+$', m_len) is None:
                     continue
                 
@@ -226,10 +159,10 @@ def CalculateRecallRate_allh5file(annotationh5file, h5recordfile, threhold=0):
                     AllDict[group][m_len] = []
                 AllDict[group][m_len].append(0)
                 
-                locs = recorddict[word][m_len]['locs']
-                begin = locs[int(idxkey)]
+                locs = recordfile[word][m_len]['locs']
+                begin = locs[int(idx)]
                 end = begin + int(m_len)
-                if not(end < real_begin or begin > real_end):
+                if JudgeWhetherFound((real_begin, real_end), (begin, end), sigma) == 1:
                     AllDict['global'][-1] = 1
                     AllDict[group]['global'][-1] = 1
                     AllDict[group][m_len][-1] = 1
@@ -245,32 +178,11 @@ def CalculateRecallRate_allh5file(annotationh5file, h5recordfile, threhold=0):
             print('the %s group global rate of %s is %f' % (group, key, sum(ratelist)/len(ratelist)))
 
 
-def locatIndexByVideoKeyoffset(h5pyfile, worddictpath, subdictpath, outpath):
-    worddict = WordsDict(worddictpath, subdictpath)
-    annotionfile = h5py.File(h5pyfile, 'r')
-
-    newfile = h5py.File(outpath, 'w')
-    for word in annotionfile.keys():
-        sampleinfos = worddict.ChooseSamples(word, 1.5)
-        for videokey in annotionfile[word].keys():
-            for offset in annotionfile[word][videokey].keys():
-                data = annotionfile[word][videokey][offset][:]
-                for index, info in enumerate(sampleinfos):
-                    if info[-1] == 1:
-                        if info[0] == videokey and info[1] == int(offset):
-                            newkey = '%s/%d' % (word, index)
-                            newfile.create_dataset(newkey, data=data)
-                            break
-    
-    annotionfile.close()
-    newfile.close()
-
-
 def DistAnalysis(h5recordfile, h5annotationfile):
     h5recfile = h5py.File(h5recordfile, mode='r')
     h5annfile = h5py.File(h5annotationfile, mode='r')
 
-    m_len_pattern = r'^/d+$'
+    m_len_pattern = r'^\d+$'
 
     words = h5recfile.keys()
     for word in words:
@@ -282,36 +194,102 @@ def DistAnalysis(h5recordfile, h5annotationfile):
         rangeindexs = h5recfile[idxkey][:]
         videoindexs = h5recfile[vdokey][:]
 
-        # get the corresponding relationship between record and annotation
-        Idxs, posidx, negidx, unknown = GetIdxofAnnotation(h5annfile[word], rangeindexs, videoindexs)
+        # 获取该Word的标签在record文件中的索引位置
+        IDXes = GetIdxofAnnotation(h5annfile[word], rangeindexs, videoindexs)
+        posidx, annorange = [], []
+        for IDX in IDXes:
+            videokey, offset, label, idx = IDX
+            if idx != -1:
+                if label == 1:
+                    posidx.append(idx)
+                    annorange.append(h5annfile['%s/%s/%s' % (word, videokey, offset)][1:])
 
-        print()
+        for mlenkey in h5recfile[word].keys():
+            if re.match(m_len_pattern, mlenkey) is not None:
+                dists = h5recfile['%s/%s/dists' % (word, mlenkey)][:]
+                locs = h5recfile['%s/%s/locs' % (word, mlenkey)][:]
+
+                for i, idx in enumerate(posidx):
+                    matched = JudgeWhetherFound(annorange[i], [locs[idx], locs[idx] + int(mlenkey)])
+                    plt.scatter([dists[idx]], [1], c='r', marker='*')
+                    if matched == 1:
+                        plt.scatter([dists[idx]], [1.5], c='y', marker='o')
+                
+                for idx in range(len(dists)):
+                    plt.scatter([dists[idx]], [2], c='b', marker='*')
+            
+                plt.title('%s:%s' % (word, mlenkey))
+                plt.show()
         
 
 def GetIdxofAnnotation(annogroup, rangelist, videolist):
+    # IDX 的格式为: videokey, offset, label, index(该sample在整个中的位置)
     IDX = []
-    Posidxs = set()
-    Negidxs = set()
     for videokey in annogroup.keys():
         for offset in annogroup[videokey].keys():
             data = annogroup[videokey][offset]
-            IDX.append(-1)
+            IDX.append([videokey, offset, -1, -1])  # 后两个是label, 以及在list中的位置
             for idx in range(len(videolist)):
-                if videolist[idx] == videokey and rangelist[idx][0] == int(offset):
+                if str(videolist[idx], encoding='utf8') == videokey and rangelist[idx][0] == int(offset):
                     if data[0] == 1:
-                        Posidxs.add(idx)
-                    else:
-                        Negidxs.add(idx)
-                    IDX[-1] = idx
+                        IDX[-1][2] = 1
+                    # 确定该 annotation 在记录中的位置
+                    IDX[-1][-1] = idx
                     break
-    Unknown = set()
-    for idx in range(len(videolist)):
-        if not (idx in Posidxs or idx in Negidxs):
-            Unknown.add(idx)
+    return IDX
+
+
+def JudgeWhetherFound(annorange, locrange, sigma=0):
+    # 判断两个区域范围的重叠区域是否大于一个比例阈值: sigma
+    a, b = annorange
+    x, y = locrange
+    if y < a or x > b:  # 这种情况下, 两者不重叠
+        return -1
+    elif x >= a and y <= b:  # 这种情况下, locrange 完全在 annorange 的内部
+        return 1
+    elif x < a:
+        if (y - a) > sigma * (y - x):
+            return 1
+        else:
+            return -1
+    elif y > b:
+        if (b - x) > sigma * (y - x):
+            return 1
+        else:
+            return -1
+    else:
+        # 理论上应该不会有上面例外的情况了
+        return None
+
+
+# 这里主要是针对recordfile之前int16下溢出的record 进行修正
+def RecordReindex(recordhdf5file, worddictpath, subtitlefilepath, outfilepath):
+    fxpattern = r'fx:(\d+.\d+)-'
+    worddict = WordsDict(worddictpath, subtitlefilepath)
+    # copy the recordfilepath to outfilepath
+    with open(recordhdf5file, 'rb') as rstream:
+        content = rstream.read()
+        with open(outfilepath, 'wb') as wstream:
+            wstream.write(content)
     
-    return IDX, Posidxs, Negidxs, Unknown
-            
-                    
+    # 然后修改复制得到的文件
+    recordfile = h5py.File(recordhdf5file)
+    for word in recordfile.keys():
+        # 获取当前文件的信息
+        infokey = '%s/loginfo' % word
+        idxkey = '%s/sampleidxs' % word
+        infos = str(recordfile[infokey][:][0], encoding='utf8')
+        fx = float(re.findall(fxpattern, infos)[0])
+        indexes = recordfile[idxkey][:]
+        
+        # according the above inforamtion to get the true info
+        num = len(indexes)
+        sample_indexes = worddict.ChooseSamples(word, fx, maxitems=num)
+        clipidx = np.array([x[1:3] for x in sample_indexes if x[-1] == 1]).astype(np.int32)
+        utilmx.WriteRecords2File(outfilepath, idxkey, clipidx, (num, 2), dtype=np.int32)
+        
+    recordfile.close()
+
 
 def AnticolorOfPicture(imgpath, outpath=None, mode=0):
     if os.path.isfile(imgpath):
@@ -346,7 +324,7 @@ def AnticolorOfPicture(imgpath, outpath=None, mode=0):
         
         if outpath is not None:
             cv2.imwrite(outpath, img)
-
+    
 
 def RunTest(testcode, server):
     if server:
@@ -402,14 +380,6 @@ def RunTest(testcode, server):
         wordinfo = '../data/spbsl/wordinfo.txt'
         WordFreqStatistics(recordfile, wordinfo, 1000)
     
-    # caculate the recall rate of the shapelets
-    elif testcode == 2:
-        newannotationfile = '../data/spbsl/annotationindex.hdf5'
-        if not os.path.exists(newannotationfile):
-            locatIndexByVideoKeyoffset(annotationpath, worddictpath, subtitledictpath, newannotationfile)
-        CalculateRecallRate(newannotationfile, shapeletrecordED)
-        CalculateRecallRate(newannotationfile, shapeletrecordNet)
-    
     elif testcode == 3:
         imgpath = '../data/img/keypoints_pose_18.png'
         outpath = '../data/img/keypoints_pose.png'
@@ -419,16 +389,29 @@ def RunTest(testcode, server):
         # calculate the recall rate with the all hdf5 file
         newannotationfile = '../data/spbsl/annotationindex.hdf5'
         # h5shapeletrecordED = '../data/spbsl/temprecord.hdf5'
+        h5shapeletrecordED = '../data/spbsl/bk_shapeletED.hdf5'
+        h5shapeletrecordNet = '../data/spbsl/bk_shapeletNetED.hdf5'
         if not os.path.exists(newannotationfile):
             locatIndexByVideoKeyoffset(annotationpath, worddictpath, subtitledictpath, newannotationfile)
-        CalculateRecallRate_allh5file(newannotationfile, h5shapeletrecordED, 0.4)
-        CalculateRecallRate_allh5file(newannotationfile, h5shapeletrecordNet, 0.4)
+        CalculateRecallRate_h5file(annotationpath, h5shapeletrecordED, 0.4)
+        CalculateRecallRate_h5file(annotationpath, h5shapeletrecordNet, 0.4)
     
     elif testcode == 5:
-        DistAnalysis(h5shapeletrecordED, annotationpath)
+        h5shapeletrecordED = '../data/spbsl/bk_shapeletED.hdf5'
+        h5shapeletrecordNet = '../data/spbsl/bk_shapeletNetED.hdf5'
+        outh5shapeletrecordED = '../data/spbsl/bk1_shapeletED.hdf5'
+        # outh5shapeletrecordNet = '../data/spbsl/bk1_shapeletNetED.hdf5'
+
+        # RecordReindex(h5shapeletrecordED, worddictpath, subtitledictpath, outh5shapeletrecordED)
+        CalculateRecallRate_h5file(annotationpath, outh5shapeletrecordED, threhold=0.5, sigma=0.5)
+    
+    elif testcode == 6:
+        h5shapeletrecordED = '../data/spbsl/bk1_shapeletED.hdf5'
+        h5shapeletrecordNet = '../data/spbsl/bk3_shapeletNetED.hdf5'
+        # DistAnalysis(h5shapeletrecordED, annotationpath)
+        DistAnalysis(h5shapeletrecordNet, annotationpath)
 
 
-        
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
     Parser.add_argument('-t', '--testcode', type=int, default=5)
