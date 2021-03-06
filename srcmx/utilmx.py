@@ -550,6 +550,13 @@ def WriteRecords2File(h5filepath, key, data, shape, dtype):
         f[key][:] = data
 
 
+# 将二进制字符串表示为Unicode字符串
+def Encode(strs):
+    if isinstance(strs, bytes):
+        strs = str(strs, encoding='utf8')
+    return strs
+
+    
 if __name__ == "__main__":
     import time
 

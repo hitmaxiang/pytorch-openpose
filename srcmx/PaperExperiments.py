@@ -230,7 +230,7 @@ def GetIdxofAnnotation(annogroup, rangelist, videolist):
             data = annogroup[videokey][offset]
             IDX.append([videokey, offset, -1, -1])  # 后两个是label, 以及在list中的位置
             for idx in range(len(videolist)):
-                if str(videolist[idx], encoding='utf8') == videokey and rangelist[idx][0] == int(offset):
+                if utilmx.Encode(videolist[idx]) == videokey and rangelist[idx][0] == int(offset):
                     if data[0] == 1:
                         IDX[-1][2] = 1
                     # 确定该 annotation 在记录中的位置
