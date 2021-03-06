@@ -4,10 +4,11 @@ Version: 2.0
 Autor: mario
 Date: 2021-01-11 16:33:19
 LastEditors: mario
-LastEditTime: 2021-03-06 22:06:41
+LastEditTime: 2021-03-06 22:33:36
 '''
 import os
 import re
+import time
 import math
 import torch
 import h5py
@@ -108,7 +109,7 @@ class DataAugmentation():
             N = len(self.h5motionfile['posedata/pose/%s' % videokey][:])
             m = len(shapeletdata)
             SegNum = math.ceil(N/self.MaxSegLength)
-
+            begtime = time.time()
             for ite in range(SegNum):
                 begidx = max(ite * self.MaxSegLength - m, 0)
                 endidx = min((ite+1)*self.MaxSegLength, N)
@@ -122,7 +123,13 @@ class DataAugmentation():
                 segdata = PD.MotionJointFeatures(segdata, datamode, featuremode)
                 segdata = np.reshape(segdata, (segdata.shape[0], -1))
                 
-                dist = utilmx.SlidingDistance(shapeletdata, segdata)
+                if torch.cuda.is_available():
+                    pattern = torch.from_numpy(shapeletdata).cuda()
+                    segdata = torch.from_numpy(segdata).cuda()
+                    with torch.no_grad():
+                        dist = utilmx.SlidingDistance_torch(pattern, segdata)
+                else:
+                    dist = utilmx.SlidingDistance(shapeletdata, segdata)
                 preidx = None
                 for idex, dis in enumerate(dist):
                     if dis < sigma:
@@ -136,8 +143,8 @@ class DataAugmentation():
                         else:
                             AugmentDict[videokey].append((begidx+idex, dis))
                             preidx = idex
-                print('%s:%d-%d/%d' % (videokey, begidx, endidx, N))
-        
+                print('%f seconds-->%s:%d-%d/%d' % (time.time() - begtime, videokey, begidx, endidx, N))
+                begtime = time.time()
         return AugmentDict
 
     def DataAugmentate(self, word=None, mode=0, scale=0.3, overwrite=False):
@@ -177,5 +184,5 @@ if __name__ == '__main__':
     shapletfilepath = '../data/spbsl/bk1_shapeletED.hdf5'
     motiondatapath = '../data/spbsl/motiondata.hdf5'
     outfilepath = '../data/spbsl/augdata.hdf5'
-    Augmentation = DataAugmentation(shapletfilepath, outfilepath, motiondatapath, MaxSegLength=10000)
+    Augmentation = DataAugmentation(shapletfilepath, outfilepath, motiondatapath, MaxSegLength=100000)
     Augmentation.DataAugmentate()
