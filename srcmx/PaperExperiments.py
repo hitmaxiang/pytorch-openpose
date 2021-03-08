@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-25 17:55:59
 LastEditors: mario
-LastEditTime: 2021-01-11 16:26:30
+LastEditTime: 2021-03-08 14:41:38
 '''
 
 import os
@@ -324,6 +324,23 @@ def AnticolorOfPicture(imgpath, outpath=None, mode=0):
         
         if outpath is not None:
             cv2.imwrite(outpath, img)
+
+
+def AugmentationAnalysis(shapeletfilepath, augdatafilepath):
+    pass
+    augfile = h5py.File(augdatafilepath, 'r')
+    shapeletfile = h5py.File(shapeletfilepath, 'r')
+
+    wordlist = list(augfile.keys())
+
+    for cword in wordlist:
+        for levelkey in augfile[cword].keys():
+            nums = 0
+            for videokey in augfile[cword][levelkey].keys():
+                nums += len(augfile[cword][levelkey][videokey][:])
+            orinum = len(shapeletfile[cword][levelkey]['dists'][:])
+
+            print('%s--%s: %d/%d = %f' % (cword, levelkey, nums, orinum, nums/orinum))
     
 
 def RunTest(testcode, server):
@@ -410,11 +427,17 @@ def RunTest(testcode, server):
         h5shapeletrecordNet = '../data/spbsl/bk3_shapeletNetED.hdf5'
         # DistAnalysis(h5shapeletrecordED, annotationpath)
         DistAnalysis(h5shapeletrecordNet, annotationpath)
+    
+    elif testcode == 7:
+        h5shapeletrecordEDfilepath = '../data/spbsl/bk1_shapeletED.hdf5'
+        augdatafilepath = '../data/spbsl/augdata.hdf5'
+
+        AugmentationAnalysis(h5shapeletrecordEDfilepath, augdatafilepath)
 
 
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=5)
+    Parser.add_argument('-t', '--testcode', type=int, default=7)
     Parser.add_argument('-s', '--server', action='store_true')
 
     args = Parser.parse_args()

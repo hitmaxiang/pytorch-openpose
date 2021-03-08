@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2021-01-11 16:33:19
 LastEditors: mario
-LastEditTime: 2021-03-06 22:33:36
+LastEditTime: 2021-03-08 15:37:23
 '''
 import os
 import re
@@ -51,13 +51,13 @@ class DataAugmentation():
             for key in self.shapeletfile[word].keys():
                 if re.match(mlenpattern, key) is None:
                     continue
-                basekey = '%s/%d' % (word, key)
+                basekey = '%s/%s' % (word, key)
                 shapelet = self.shapeletfile[basekey]['shapelet'][:]
                 dists = self.shapeletfile[basekey]['dists'][:]
-                score = self.shapeletfile[basekey]['score'][:]
+                score = self.shapeletfile[basekey]['score'][0]
 
                 dists = np.sort(dists)
-                avgdist = dists[:int(len(dists) * scale)]
+                avgdist = np.mean(dists[:int(len(dists) * scale)])
                 sigma = dists[int(len(dists) * scale)]
                 if score > bestshaplet['score']:
                     temp = (key, shapelet, sigma)
@@ -128,9 +128,11 @@ class DataAugmentation():
                     segdata = torch.from_numpy(segdata).cuda()
                     with torch.no_grad():
                         dist = utilmx.SlidingDistance_torch(pattern, segdata)
+                        dist = dist.cpu()
                 else:
                     dist = utilmx.SlidingDistance(shapeletdata, segdata)
                 preidx = None
+                print(min(dist))
                 for idex, dis in enumerate(dist):
                     if dis < sigma:
                         if preidx is not None:
@@ -159,10 +161,11 @@ class DataAugmentation():
             print('please input the word or wordlist with correct form')
             return
             
-        h5outfile = h5py.File(self.outputpath, mode='w')
-        for cword in wordlist:
+        h5outfile = h5py.File(self.outputpath, mode='a')
+        for i, cword in enumerate(wordlist):
             shapeletpatterns = self.GetShapeletPattern(cword, mode, scale)
             for shapeletpattern in shapeletpatterns:
+                begtime = time.time()
                 levelkey, shapelet, sigma = shapeletpattern
                 groupkey = '%s/%s' % (cword, levelkey)
                 if overwrite is False:
@@ -178,6 +181,9 @@ class DataAugmentation():
                     datakey = '%s/%s' % (groupkey, videokey)
                     data = np.array(augmentdict[videokey])
                     h5outfile.create_dataset(datakey, data=data)
+                    h5outfile.flush()
+                print('write the data of %s with %f seconds' % (groupkey, time.time() - begtime))
+        h5outfile.close()
 
 
 if __name__ == '__main__':
@@ -185,4 +191,4 @@ if __name__ == '__main__':
     motiondatapath = '../data/spbsl/motiondata.hdf5'
     outfilepath = '../data/spbsl/augdata.hdf5'
     Augmentation = DataAugmentation(shapletfilepath, outfilepath, motiondatapath, MaxSegLength=100000)
-    Augmentation.DataAugmentate()
+    Augmentation.DataAugmentate('school', mode=1, overwrite=True)

@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:25:13
 LastEditors: mario
-LastEditTime: 2021-01-11 23:09:13
+LastEditTime: 2021-03-08 22:41:10
 '''
 import os
 import time
@@ -331,7 +331,7 @@ def RunTest(testcode, method, retrain):
         #     recordfile = EDrecordfile
         # elif method == 1:
         #     recordfile = Netrecordfile
-            
+        words = ['air']
         cls_shapelet = ShapeletsFinding(motionhdf5filepath, worddictpath, subtitledictpath)
         cls_shapelet.train(words, method=method, overwrite=retrain)
 
@@ -341,7 +341,7 @@ def RunTest(testcode, method, retrain):
         
 if __name__ == "__main__":
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--testcode', type=int, default=1)
     parser.add_argument('-r', '--retrain', action='store_true')
