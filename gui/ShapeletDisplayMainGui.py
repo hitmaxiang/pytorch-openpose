@@ -17,7 +17,6 @@ from srcmx import PreprocessingData as PD
 
 from PySide2.QtCore import *
 from PySide2.QtGui import *
-from PySide2.Qt import *
 from PySide2.QtWidgets import *
 
 from Ui_DisplayShapeletRecord import Ui_Form as Ui_Shaplelet
@@ -75,20 +74,19 @@ class ShapeletDisplay(QWidget):
         
         with h5py.File(self.shapeletfilepath, 'r') as h5file:
             infopattern = r'fx:(.+)-datamode:(.+)-featuremode:(\d+)$'
-            info = h5file[word]['loginfo'][0]
+            info = utilmx.Encode(h5file[word]['loginfo'][0])
             fx, datamode, featuremode = re.findall(infopattern, info)[0]
             featuremode = int(featuremode)
             
             begidx = int(self.Display.begidxlineedit.text())
+            endidx = int(self.Display.endidxlineedit.text())
             loc = int(self.Display.loctionlineedit.text())
-            begidx += loc
-            endidx = begidx + int(level)
             vdokey = self.Display.videokeylineedit.text()
             
             in_begidx = int(self.Display.instancebegidx.text())
             in_endidx = int(self.Display.instanceendidx.text())
             in_loc = int(self.Display.instanceloction.text())
-            in_vdokey = self.Display.videokeylineedit.text()
+            in_vdokey = self.Display.instancevideokey.text()
             dist = float(self.Display.instancedis.text())
         
         with h5py.File(self.motionfilepath, 'r') as motionfile:
@@ -99,6 +97,7 @@ class ShapeletDisplay(QWidget):
 
             shapeletdata = PD.MotionJointFeatures(shapeletdata, datamode, featuremode)
             shapeletdata = np.reshape(shapeletdata, (shapeletdata.shape[0], -1))
+            shapeletdata = shapeletdata[loc:loc+int(level)]
 
             posedata = motionfile['posedata/pose/%s' % in_vdokey][in_begidx:in_endidx].astype(np.float32)
             handdata = motionfile['handdata/hand/%s' % in_vdokey][in_begidx:in_endidx].astype(np.float32)
@@ -108,7 +107,7 @@ class ShapeletDisplay(QWidget):
             Instancedata = np.reshape(Instancedata, (Instancedata.shape[0], -1))
 
             dists = utilmx.SlidingDistance(shapeletdata, Instancedata)
-            print(dists)
+            # print(dists)
             idx = np.argmin(dists)
             print('%d==>record:%d-%f, now:%d-%f' % (self.Index, in_loc, dist, idx, min(dists)))
     
@@ -127,7 +126,7 @@ class ShapeletDisplay(QWidget):
 
                 Idx = Idx[0]
                 begidx, endidx = h5file[word]['sampleidxs'][Idx]
-                videokey = h5file[word]['videokeys'][Idx]
+                videokey = utilmx.Encode(h5file[word]['videokeys'][Idx])
                 location = h5file[word][level]['locs'][Idx]
                 self.Display.videokeylineedit.setText(videokey)
                 self.Display.begidxlineedit.setText(str(begidx))
@@ -135,7 +134,7 @@ class ShapeletDisplay(QWidget):
                 self.Display.loctionlineedit.setText(str(location))
 
                 begidx, endidx = h5file[word]['sampleidxs'][self.Index]
-                videokey = h5file[word]['videokeys'][self.Index]
+                videokey = utilmx.Encode(h5file[word]['videokeys'][self.Index])
                 dist = h5file[word][level]['dists'][self.Index]
                 location = h5file[word][level]['locs'][self.Index]
 
@@ -178,7 +177,7 @@ class MainGui(QMainWindow):
 
     def InitWidgets(self):
         self.mainwindow.actionShaperecord.triggered.connect(self.ChooseRecordFile)
-        self.shapeletDisplay.OpenFile('../data/spbsl/bk1_shapeletED.hdf5')
+        self.shapeletDisplay.OpenFile('../data/spbsl/shapeletED.hdf5')
     
     def ChooseRecordFile(self):
         results = QFileDialog.getOpenFileName(self,
