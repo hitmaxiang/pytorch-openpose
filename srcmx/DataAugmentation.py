@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2021-01-11 16:33:19
 LastEditors: mario
-LastEditTime: 2021-03-08 15:37:23
+LastEditTime: 2021-03-09 21:10:15
 '''
 import os
 import re
@@ -57,8 +57,9 @@ class DataAugmentation():
                 score = self.shapeletfile[basekey]['score'][0]
 
                 dists = np.sort(dists)
-                avgdist = np.mean(dists[:int(len(dists) * scale)])
-                sigma = dists[int(len(dists) * scale)]
+                validnum = int(len(dists) * scale)
+                avgdist = np.sum(dists[:validnum])/(validnum - 1)
+                sigma = dists[validnum-1]
                 if score > bestshaplet['score']:
                     temp = (key, shapelet, sigma)
                     bestshaplet['score'] = score
@@ -88,9 +89,8 @@ class DataAugmentation():
         # 这种情况下，是 shapletfinding 的结果
         if len(shapelet) == 1:  
             index = shapelet[0]
-            minid, maxid = ranges[index]
-            begidx = locs[index] + minid
-            endidx = begidx + int(levelkey)
+            begidx, endidx = ranges[index]
+            loc = locs[index]
             videokey = videokeys[index]
 
             posedata = self.h5motionfile['posedata/pose/%s' % videokey][begidx:endidx].astype(np.float32)
@@ -99,6 +99,7 @@ class DataAugmentation():
 
             shapeletdata = PD.MotionJointFeatures(shapeletdata, datamode, featuremode)
             shapeletdata = np.reshape(shapeletdata, (shapeletdata.shape[0], -1))
+            shapeletdata = shapeletdata[loc:loc+int(levelkey)]
         else:
             shapeletdata = shapelet
         
@@ -123,27 +124,29 @@ class DataAugmentation():
                 segdata = PD.MotionJointFeatures(segdata, datamode, featuremode)
                 segdata = np.reshape(segdata, (segdata.shape[0], -1))
                 
+                pattern = torch.from_numpy(shapeletdata)
+                segdata = torch.from_numpy(segdata)
                 if torch.cuda.is_available():
-                    pattern = torch.from_numpy(shapeletdata).cuda()
-                    segdata = torch.from_numpy(segdata).cuda()
+                    pattern = pattern.cuda()
+                    segdata = segdata.cuda()
                     with torch.no_grad():
                         dist = utilmx.SlidingDistance_torch(pattern, segdata)
-                        dist = dist.cpu()
+                        # dist = dist.cpu()
                 else:
                     dist = utilmx.SlidingDistance(shapeletdata, segdata)
                 preidx = None
-                print(min(dist))
+                # print(min(dist))
                 for idex, dis in enumerate(dist):
                     if dis < sigma:
                         if preidx is not None:
                             if idex - preidx > m/2:
-                                AugmentDict[videokey].append((begidx+idex, dis))
+                                AugmentDict[videokey].append((begidx+idex, dis.item()))
                                 preidx = idex
                             elif dis < AugmentDict[videokey][-1][1]:
-                                AugmentDict[videokey][-1] = (begidx+idex, dis)
+                                AugmentDict[videokey][-1] = (begidx+idex, dis.item())
                                 preidx = idex
                         else:
-                            AugmentDict[videokey].append((begidx+idex, dis))
+                            AugmentDict[videokey].append((begidx+idex, dis.item()))
                             preidx = idex
                 print('%f seconds-->%s:%d-%d/%d' % (time.time() - begtime, videokey, begidx, endidx, N))
                 begtime = time.time()

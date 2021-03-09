@@ -17,23 +17,12 @@ class Ui_Form(object):
     def setupUi(self, Form):
         if not Form.objectName():
             Form.setObjectName(u"Form")
-        Form.resize(885, 235)
-        self.nextinstance = QPushButton(Form)
-        self.nextinstance.setObjectName(u"nextinstance")
-        self.nextinstance.setGeometry(QRect(710, 40, 101, 25))
-        self.checkInstance = QPushButton(Form)
-        self.checkInstance.setObjectName(u"checkInstance")
-        self.checkInstance.setGeometry(QRect(710, 80, 101, 25))
-        self.checkAllInstances = QPushButton(Form)
-        self.checkAllInstances.setObjectName(u"checkAllInstances")
-        self.checkAllInstances.setGeometry(QRect(710, 120, 101, 25))
-        self.widget = QWidget(Form)
-        self.widget.setObjectName(u"widget")
-        self.widget.setGeometry(QRect(40, 20, 649, 197))
-        self.horizontalLayout_4 = QHBoxLayout(self.widget)
+        Form.resize(967, 235)
+        self.horizontalLayout_6 = QHBoxLayout(Form)
+        self.horizontalLayout_6.setObjectName(u"horizontalLayout_6")
+        self.horizontalLayout_4 = QHBoxLayout()
         self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
-        self.horizontalLayout_4.setContentsMargins(0, 0, 0, 0)
-        self.groupBox = QGroupBox(self.widget)
+        self.groupBox = QGroupBox(Form)
         self.groupBox.setObjectName(u"groupBox")
         self.horizontalLayout = QHBoxLayout(self.groupBox)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
@@ -65,7 +54,7 @@ class Ui_Form(object):
 
         self.horizontalLayout_4.addWidget(self.groupBox)
 
-        self.groupBox_2 = QGroupBox(self.widget)
+        self.groupBox_2 = QGroupBox(Form)
         self.groupBox_2.setObjectName(u"groupBox_2")
         self.horizontalLayout_2 = QHBoxLayout(self.groupBox_2)
         self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
@@ -111,13 +100,23 @@ class Ui_Form(object):
 
         self.formLayout_2.setWidget(3, QFormLayout.FieldRole, self.loctionlineedit)
 
+        self.label_12 = QLabel(self.groupBox_2)
+        self.label_12.setObjectName(u"label_12")
+
+        self.formLayout_2.setWidget(4, QFormLayout.LabelRole, self.label_12)
+
+        self.shapeletindex = QLineEdit(self.groupBox_2)
+        self.shapeletindex.setObjectName(u"shapeletindex")
+
+        self.formLayout_2.setWidget(4, QFormLayout.FieldRole, self.shapeletindex)
+
 
         self.horizontalLayout_2.addLayout(self.formLayout_2)
 
 
         self.horizontalLayout_4.addWidget(self.groupBox_2)
 
-        self.groupBox_3 = QGroupBox(self.widget)
+        self.groupBox_3 = QGroupBox(Form)
         self.groupBox_3.setObjectName(u"groupBox_3")
         self.horizontalLayout_3 = QHBoxLayout(self.groupBox_3)
         self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
@@ -180,6 +179,53 @@ class Ui_Form(object):
         self.horizontalLayout_4.addWidget(self.groupBox_3)
 
 
+        self.horizontalLayout_6.addLayout(self.horizontalLayout_4)
+
+        self.verticalLayout_2 = QVBoxLayout()
+        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.verticalLayout_2.addItem(self.verticalSpacer)
+
+        self.verticalLayout = QVBoxLayout()
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.horizontalLayout_5 = QHBoxLayout()
+        self.horizontalLayout_5.setObjectName(u"horizontalLayout_5")
+        self.curinstanceindex = QSpinBox(Form)
+        self.curinstanceindex.setObjectName(u"curinstanceindex")
+
+        self.horizontalLayout_5.addWidget(self.curinstanceindex)
+
+        self.posnumedit = QLineEdit(Form)
+        self.posnumedit.setObjectName(u"posnumedit")
+
+        self.horizontalLayout_5.addWidget(self.posnumedit)
+
+
+        self.verticalLayout.addLayout(self.horizontalLayout_5)
+
+        self.nextinstance = QPushButton(Form)
+        self.nextinstance.setObjectName(u"nextinstance")
+
+        self.verticalLayout.addWidget(self.nextinstance)
+
+        self.checkInstance = QPushButton(Form)
+        self.checkInstance.setObjectName(u"checkInstance")
+
+        self.verticalLayout.addWidget(self.checkInstance)
+
+        self.checkAllInstances = QPushButton(Form)
+        self.checkAllInstances.setObjectName(u"checkAllInstances")
+
+        self.verticalLayout.addWidget(self.checkAllInstances)
+
+
+        self.verticalLayout_2.addLayout(self.verticalLayout)
+
+
+        self.horizontalLayout_6.addLayout(self.verticalLayout_2)
+
+
         self.retranslateUi(Form)
 
         QMetaObject.connectSlotsByName(Form)
@@ -187,9 +233,6 @@ class Ui_Form(object):
 
     def retranslateUi(self, Form):
         Form.setWindowTitle(QCoreApplication.translate("Form", u"Form", None))
-        self.nextinstance.setText(QCoreApplication.translate("Form", u"\u4e0b\u4e00\u4e2a\u5b9e\u4f8b", None))
-        self.checkInstance.setText(QCoreApplication.translate("Form", u"\u6821\u9a8c\u8be5\u5b9e\u4f8b", None))
-        self.checkAllInstances.setText(QCoreApplication.translate("Form", u"\u6821\u9a8c\u5b9e\u4f8b\u4eec", None))
         self.groupBox.setTitle(QCoreApplication.translate("Form", u"Key", None))
         self.label.setText(QCoreApplication.translate("Form", u"word:", None))
         self.label_2.setText(QCoreApplication.translate("Form", u"level:", None))
@@ -197,12 +240,16 @@ class Ui_Form(object):
         self.label_3.setText(QCoreApplication.translate("Form", u"videokey:", None))
         self.label_4.setText(QCoreApplication.translate("Form", u"begidx:", None))
         self.label_5.setText(QCoreApplication.translate("Form", u"endidx:", None))
-        self.label_6.setText(QCoreApplication.translate("Form", u"loctions", None))
+        self.label_6.setText(QCoreApplication.translate("Form", u"loctions:", None))
+        self.label_12.setText(QCoreApplication.translate("Form", u"Index:", None))
         self.groupBox_3.setTitle(QCoreApplication.translate("Form", u"instance info", None))
         self.label_7.setText(QCoreApplication.translate("Form", u"videokey:", None))
         self.label_8.setText(QCoreApplication.translate("Form", u"begidx:", None))
         self.label_9.setText(QCoreApplication.translate("Form", u"endidx:", None))
         self.label_10.setText(QCoreApplication.translate("Form", u"loctions", None))
         self.label_11.setText(QCoreApplication.translate("Form", u"distance:", None))
+        self.nextinstance.setText(QCoreApplication.translate("Form", u"\u4e0b\u4e00\u4e2a\u5b9e\u4f8b", None))
+        self.checkInstance.setText(QCoreApplication.translate("Form", u"\u6821\u9a8c\u8be5\u5b9e\u4f8b", None))
+        self.checkAllInstances.setText(QCoreApplication.translate("Form", u"\u6821\u9a8c\u5b9e\u4f8b\u4eec", None))
     # retranslateUi
 

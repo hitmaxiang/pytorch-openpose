@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-25 17:55:59
 LastEditors: mario
-LastEditTime: 2021-03-08 14:41:38
+LastEditTime: 2021-03-09 11:33:24
 '''
 
 import os
@@ -326,7 +326,7 @@ def AnticolorOfPicture(imgpath, outpath=None, mode=0):
             cv2.imwrite(outpath, img)
 
 
-def AugmentationAnalysis(shapeletfilepath, augdatafilepath):
+def AugmentationScaleAnalysis(shapeletfilepath, augdatafilepath):
     pass
     augfile = h5py.File(augdatafilepath, 'r')
     shapeletfile = h5py.File(shapeletfilepath, 'r')

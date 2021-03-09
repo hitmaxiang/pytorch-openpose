@@ -4,11 +4,12 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:34:31
 LastEditors: mario
-LastEditTime: 2020-10-20 11:21:09
+LastEditTime: 2021-03-09 20:33:50
 '''
 import numpy as np
 from numba import jit
 import sklearn.preprocessing as PP
+from copy import deepcopy
 from sklearn.preprocessing import scale
 
 
@@ -70,7 +71,7 @@ def MotionJointFeatures(motiondata, datamode=None, featuremode=0):
     return data
     
 
-def ProcessingTheNonValue(datamat, mode=0):
+def ProcessingTheNonValue(datamat, mode=0, sigma=2):
     # 在有关节点位置的数据有些时候是空的，所以需要补上前后的值
     
     if mode == 0:
@@ -79,7 +80,20 @@ def ProcessingTheNonValue(datamat, mode=0):
             for r in range(1, datamat.shape[0]):
                 if datamat[r, c] == 0:
                     datamat[r, c] = datamat[r-1, c]
-    
+    elif mode == 1:
+        # 只在窗口 +-sigma 的范围内进行填充
+        copymat = deepcopy(datamat)
+        for c in range(datamat.shape[1]):
+            for r in range(datamat.shape[0]):
+                if datamat[r, c] == 0:
+                    for s in range(1, sigma+1):
+                        if r-s >= 0 and copymat[r-s, c] != 0:
+                            datamat[r, c] = copymat[r-s, c]
+                            break
+                        elif r+s < datamat.shape[0] and copymat[r+s, c] != 0:
+                            datamat[r, c] = copymat[r+s, c]
+                            break
+
     return datamat
 
 
@@ -126,3 +140,14 @@ def NormlizeData(samples, mode=0):
             samples[s_id] = PP.minmax_scale(samples[s_id], axis=0)
 
     return samples
+
+
+if __name__ == '__main__':
+    testcode = 0
+    if testcode == 0:
+        a = [[0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0],
+             [1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1]]
+        a = np.array(a)
+        print(a)
+
+        print(ProcessingTheNonValue(a.T, mode=1).T)

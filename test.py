@@ -4,11 +4,12 @@ Version: 2.0
 Autor: mario
 Date: 2020-11-27 15:51:11
 LastEditors: mario
-LastEditTime: 2020-12-09 22:17:06
+LastEditTime: 2021-03-09 19:54:45
 '''
 import sys
 sys.path.append('./srcmx')
 
+import h5py
 import scipy
 import time
 import torch
@@ -21,6 +22,7 @@ from copy import deepcopy
 from scipy import fft
 from srcmx import utilmx
 from srcmx import shapeletmodel
+from srcmx import PreprocessingData as PD
 from scipy.signal import convolve2d, convolve
 from sklearn.linear_model import LogisticRegression as LR
 
@@ -303,6 +305,94 @@ def samples2tensor(samples):
     return sample_tensor
 
 
+def TestNoneValueprocessImpact(motionfilepath):
+    
+    with h5py.File(motionfilepath, 'r') as motionfile:
+        vieokeys = list(motionfile['posedata/pose'].keys())
+        videokey = np.random.choice(vieokeys)
+        N = len(motionfile['posedata/pose/%s' % videokey][:])
+        m, T = 15, 300
+        loc1 = np.random.randint(0, N-m)
+        loc2 = np.random.randint(0, N-T)
+
+        # construct the shaplet data
+        svkey = '041'
+        loc1 = 87720 + 229
+        posedata = motionfile['posedata/pose/%s' % svkey][loc1:loc1+m].astype(np.float32)
+        handdata = motionfile['handdata/hand/%s' % svkey][loc1:loc1+m].astype(np.float32)
+        shapeletdata = np.concatenate((posedata, handdata), axis=1)
+        shapeletdata = PD.MotionJointFeatures(shapeletdata, 'posehand', 1)
+        shapeletdata = np.reshape(shapeletdata, (shapeletdata.shape[0], -1))
+
+        # construct the sequence data
+        posedata = motionfile['posedata/pose/%s' % videokey][:].astype(np.float32)
+        handdata = motionfile['handdata/hand/%s' % videokey][:].astype(np.float32)
+
+        seqdata1 = np.concatenate((posedata[loc2:loc2+T], handdata[loc2:loc2+T]), axis=1)
+        seqdata1 = PD.MotionJointFeatures(seqdata1, 'posehand', 1)
+        seqdata1 = np.reshape(seqdata1, (seqdata1.shape[0], -1))
+        
+        seqdata2 = np.concatenate((posedata, handdata), axis=1)
+        seqdata2 = PD.MotionJointFeatures(seqdata2, 'posehand', 1)
+        seqdata2 = np.reshape(seqdata2, (seqdata2.shape[0], -1))
+
+        seqdata3 = seqdata2[loc2:loc2+T]
+
+        dist1 = utilmx.SlidingDistance(shapeletdata, seqdata1)
+        # dist2 = utilmx.SlidingDistance(shapeletdata, seqdata2)[loc2:loc2+T-m+1]
+        dist3 = utilmx.SlidingDistance(shapeletdata, seqdata3)
+
+        # print(np.allclose(dist1, dist2))
+        if np.allclose(dist1, dist3) is False:
+            print(abs(min(dist1) - min(dist3)))
+        # print(np.allclose(dist1, dist3))
+        # print(np.allclose(dist3, dist2))
+
+def TestNoneValueprocessImpact2(motionfilepath):
+    # the infomation of the shapelet 
+    videokey = '041'
+    begidx, endidx = 88720, 87974
+    loc = 229
+
+    with h5py.File(motionfilepath, 'r') as motionfile:
+        # compare the difference of shapeletdata with two construction methods
+        vieokeys = list(motionfile['posedata/pose'].keys())
+        videokey = np.random.choice(vieokeys)
+        N = len(motionfile['posedata/pose/%s' % videokey][:])
+        m = np.random.randint(15, 40)
+        T = np.random.randint(150, 300)
+
+        begidx = np.random.randint(0, N-T+1)
+        endidx = begidx + T
+        loc = np.random.randint(0, T-m+1)
+
+        # videokey = '041'
+        # begidx = 87720
+        # endidx = 87974
+        # loc = 229
+        # m = 15
+        videokey = '073'
+        begidx = 219537
+        endidx = 219721
+        loc = 24
+        m = 15
+                
+        # construct the shaplet data
+        posedata = motionfile['posedata/pose/%s' % videokey][begidx:endidx].astype(np.float32)
+        handdata = motionfile['handdata/hand/%s' % videokey][begidx:endidx].astype(np.float32)
+        segdata = np.concatenate((posedata, handdata), axis=1)
+        shapeletdata = segdata[loc:loc+m]
+
+        shapeletdata = PD.MotionJointFeatures(shapeletdata, 'posehand', 1)
+        shapeletdata = np.reshape(shapeletdata, (shapeletdata.shape[0], -1))
+        
+        segdata = PD.MotionJointFeatures(segdata, 'posehand', 1)
+        segdata = np.reshape(segdata, (segdata.shape[0], -1))
+        shapeletdata1 = segdata[loc:loc+m]
+        # diff = shapeletdata - shapeletdata1
+        print(np.mean(abs(shapeletdata - shapeletdata1)))
+
+
 def Test(testcode):
     if testcode == 0:
         # prepare the data
@@ -423,6 +513,12 @@ def Test(testcode):
                 plt.scatter([i], [dis[i].item()], c='g', marker='*')
         plt.savefig('dis.jpg')
 
+    if testcode == 2:
+        for i in range(1):
+            # TestNoneValueprocessImpact('./data/spbsl/motiondata.hdf5')
+            # print()
+            TestNoneValueprocessImpact2('./data/spbsl/motiondata.hdf5')
+
 
 if __name__ == "__main__":
-    Test(1)
+    Test(2)

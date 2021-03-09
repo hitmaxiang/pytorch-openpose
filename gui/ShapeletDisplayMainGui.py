@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2021-03-08 16:14:15
 LastEditors: mario
-LastEditTime: 2021-03-08 23:21:14
+LastEditTime: 2021-03-09 15:45:16
 '''
 import sys
 sys.path.append('../')
@@ -39,7 +39,14 @@ class ShapeletDisplay(QWidget):
         self.Display.nextinstance.clicked.connect(self.NextInstance)
         self.Display.checkInstance.clicked.connect(self.CheckInstance)
         self.Display.checkAllInstances.clicked.connect(self.CheckAllInstance)
+        self.Display.curinstanceindex.valueChanged.connect(self.UpdateFromSpin)
+        self.Display.wordcomboBox.currentIndexChanged.connect(self.UpdateDisplayInfo)
+        self.Display.levelcomboBox.currentIndexChanged.connect(self.UpdateDisplayInfo)
     
+    def UpdateFromSpin(self):
+        self.Index = self.Display.curinstanceindex.value()
+        self.UpdateDisplayInfo()
+        
     def CheckAllInstance(self):
         if self.shapeletfilepath is None or (not os.path.exists(self.shapeletfilepath)):
             return
@@ -55,16 +62,10 @@ class ShapeletDisplay(QWidget):
                 self.CheckInstance()
     
     def NextInstance(self):
-        if self.shapeletfilepath is None or (not os.path.exists(self.shapeletfilepath)):
-            return
-        word = self.Display.wordcomboBox.currentText()
-        level = self.Display.levelcomboBox.currentText()
-        
-        with h5py.File(self.shapeletfilepath, 'r') as h5file:
-            N = len(h5file[word][level]['dists'][:])
-        if N > 0:
-            self.Index = (self.Index + 1) % N
-        self.UpdateDisplayInfo()
+        N = self.Display.posnumedit.text()
+        if N is not None and int(N) > 0:
+            self.Index = (self.Index + 1) % int(N)
+            self.UpdateDisplayInfo()
     
     def CheckInstance(self):
         word = self.Display.wordcomboBox.currentText()
@@ -94,10 +95,10 @@ class ShapeletDisplay(QWidget):
             posedata = motionfile['posedata/pose/%s' % vdokey][begidx:endidx].astype(np.float32)
             handdata = motionfile['handdata/hand/%s' % vdokey][begidx:endidx].astype(np.float32)
             shapeletdata = np.concatenate((posedata, handdata), axis=1)
-
+            shapeletdata = shapeletdata[loc:loc+int(level)]
             shapeletdata = PD.MotionJointFeatures(shapeletdata, datamode, featuremode)
             shapeletdata = np.reshape(shapeletdata, (shapeletdata.shape[0], -1))
-            shapeletdata = shapeletdata[loc:loc+int(level)]
+            # shapeletdata = shapeletdata[loc:loc+int(level)]
 
             posedata = motionfile['posedata/pose/%s' % in_vdokey][in_begidx:in_endidx].astype(np.float32)
             handdata = motionfile['handdata/hand/%s' % in_vdokey][in_begidx:in_endidx].astype(np.float32)
@@ -116,6 +117,9 @@ class ShapeletDisplay(QWidget):
             return
         word = self.Display.wordcomboBox.currentText()
         level = self.Display.levelcomboBox.currentText()
+
+        if word == '' or level == '':
+            return
         
         with h5py.File(self.shapeletfilepath, 'r') as h5file:
             if '%s/%s' % (word, level) in h5file.keys():
@@ -143,7 +147,13 @@ class ShapeletDisplay(QWidget):
                 self.Display.instanceendidx.setText(str(endidx))
                 self.Display.instanceloction.setText(str(location))
                 self.Display.instancedis.setText(str(dist))
-    
+
+                N = len(h5file[word]['sampleidxs'][:])
+                self.Display.posnumedit.setText(str(N))
+                self.Display.curinstanceindex.setRange(0, N-1)
+                self.Display.curinstanceindex.setValue(self.Index)
+                self.Display.shapeletindex.setText(str(Idx))
+
     def OpenFile(self, filepath):
         if not os.path.isfile(filepath):
             return
@@ -160,7 +170,7 @@ class ShapeletDisplay(QWidget):
                 if re.match(r'^\d+$', levelkey) is not None:
                     self.Display.levelcomboBox.addItem(levelkey)
             self.Display.levelcomboBox.setCurrentIndex(0)
-        
+        self.Index = 0
         self.UpdateDisplayInfo()
 
 
@@ -177,7 +187,9 @@ class MainGui(QMainWindow):
 
     def InitWidgets(self):
         self.mainwindow.actionShaperecord.triggered.connect(self.ChooseRecordFile)
-        self.shapeletDisplay.OpenFile('../data/spbsl/shapeletED.hdf5')
+        # self.shapeletDisplay.OpenFile('../data/spbsl/shapeletED.hdf5')
+        self.shapeletDisplay.OpenFile('../data/spbsl/bk1_shapeletED.hdf5')
+
     
     def ChooseRecordFile(self):
         results = QFileDialog.getOpenFileName(self,
