@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-11-27 15:51:11
 LastEditors: mario
-LastEditTime: 2021-03-09 19:54:45
+LastEditTime: 2021-03-09 21:50:09
 '''
 import sys
 sys.path.append('./srcmx')
@@ -348,6 +348,7 @@ def TestNoneValueprocessImpact(motionfilepath):
         # print(np.allclose(dist1, dist3))
         # print(np.allclose(dist3, dist2))
 
+
 def TestNoneValueprocessImpact2(motionfilepath):
     # the infomation of the shapelet 
     videokey = '041'
@@ -392,6 +393,13 @@ def TestNoneValueprocessImpact2(motionfilepath):
         # diff = shapeletdata - shapeletdata1
         print(np.mean(abs(shapeletdata - shapeletdata1)))
 
+
+def ListKeysofHdf5File(filepath):
+    with h5py.File(filepath, 'r') as h5File:
+        for word in h5File.keys():
+            print(word)
+            for keys in h5File[word].keys():
+                print('\t%s' % keys)
 
 def Test(testcode):
     if testcode == 0:
@@ -518,7 +526,12 @@ def Test(testcode):
             # TestNoneValueprocessImpact('./data/spbsl/motiondata.hdf5')
             # print()
             TestNoneValueprocessImpact2('./data/spbsl/motiondata.hdf5')
+    if testcode == 3:
+        filepath = './data/spbsl/bk_shapeletED.hdf5'
+        filepath2 = './data/spbsl/bk_shapeletNetED.hdf5'
+        ListKeysofHdf5File(filepath)
+
 
 
 if __name__ == "__main__":
-    Test(2)
+    Test(3)

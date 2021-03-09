@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2021-01-11 16:33:19
 LastEditors: mario
-LastEditTime: 2021-03-09 21:10:15
+LastEditTime: 2021-03-09 21:30:46
 '''
 import os
 import re
@@ -194,4 +194,4 @@ if __name__ == '__main__':
     motiondatapath = '../data/spbsl/motiondata.hdf5'
     outfilepath = '../data/spbsl/augdata.hdf5'
     Augmentation = DataAugmentation(shapletfilepath, outfilepath, motiondatapath, MaxSegLength=100000)
-    Augmentation.DataAugmentate('school', mode=1, overwrite=True)
+    Augmentation.DataAugmentate(mode=1, overwrite=True)

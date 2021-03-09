@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-25 17:55:59
 LastEditors: mario
-LastEditTime: 2021-03-09 11:33:24
+LastEditTime: 2021-03-09 22:13:41
 '''
 
 import os
@@ -273,12 +273,12 @@ def RecordReindex(recordhdf5file, worddictpath, subtitlefilepath, outfilepath):
             wstream.write(content)
     
     # 然后修改复制得到的文件
-    recordfile = h5py.File(recordhdf5file)
+    recordfile = h5py.File(recordhdf5file, 'r')
     for word in recordfile.keys():
         # 获取当前文件的信息
         infokey = '%s/loginfo' % word
         idxkey = '%s/sampleidxs' % word
-        infos = str(recordfile[infokey][:][0], encoding='utf8')
+        infos = utilmx.Encode(recordfile[infokey][:][0])
         fx = float(re.findall(fxpattern, infos)[0])
         indexes = recordfile[idxkey][:]
         
@@ -416,11 +416,11 @@ def RunTest(testcode, server):
     elif testcode == 5:
         h5shapeletrecordED = '../data/spbsl/bk_shapeletED.hdf5'
         h5shapeletrecordNet = '../data/spbsl/bk_shapeletNetED.hdf5'
-        outh5shapeletrecordED = '../data/spbsl/bk1_shapeletED.hdf5'
-        # outh5shapeletrecordNet = '../data/spbsl/bk1_shapeletNetED.hdf5'
+        outh5shapeletrecordED = '../data/spbsl/bk2_shapeletED.hdf5'
+        outh5shapeletrecordNet = '../data/spbsl/bk4_shapeletNetED.hdf5'
 
-        # RecordReindex(h5shapeletrecordED, worddictpath, subtitledictpath, outh5shapeletrecordED)
-        CalculateRecallRate_h5file(annotationpath, outh5shapeletrecordED, threhold=0.5, sigma=0.5)
+        # RecordReindex(h5shapeletrecordNet, worddictpath, subtitledictpath, outh5shapeletrecordNet)
+        CalculateRecallRate_h5file(annotationpath, outh5shapeletrecordED, threhold=0.5, sigma=0.3)
     
     elif testcode == 6:
         h5shapeletrecordED = '../data/spbsl/bk1_shapeletED.hdf5'
@@ -437,7 +437,7 @@ def RunTest(testcode, server):
 
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=7)
+    Parser.add_argument('-t', '--testcode', type=int, default=5)
     Parser.add_argument('-s', '--server', action='store_true')
 
     args = Parser.parse_args()
