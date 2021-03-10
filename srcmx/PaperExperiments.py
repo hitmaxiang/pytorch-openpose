@@ -403,15 +403,12 @@ def RunTest(testcode, server):
         AnticolorOfPicture(imgpath, outpath, mode=1)
     
     elif testcode == 4:
-        # calculate the recall rate with the all hdf5 file
-        newannotationfile = '../data/spbsl/annotationindex.hdf5'
         # h5shapeletrecordED = '../data/spbsl/temprecord.hdf5'
-        h5shapeletrecordED = '../data/spbsl/bk_shapeletED.hdf5'
+        h5shapeletrecordED = '../data/spbsl/shapeletED.hdf5'
         h5shapeletrecordNet = '../data/spbsl/bk_shapeletNetED.hdf5'
-        if not os.path.exists(newannotationfile):
-            locatIndexByVideoKeyoffset(annotationpath, worddictpath, subtitledictpath, newannotationfile)
-        CalculateRecallRate_h5file(annotationpath, h5shapeletrecordED, 0.4)
-        CalculateRecallRate_h5file(annotationpath, h5shapeletrecordNet, 0.4)
+        
+        CalculateRecallRate_h5file(annotationpath, h5shapeletrecordED, 0.5, sigma=0.5)
+        # CalculateRecallRate_h5file(annotationpath, h5shapeletrecordNet, 0.4)
     
     elif testcode == 5:
         h5shapeletrecordED = '../data/spbsl/bk_shapeletED.hdf5'
@@ -420,7 +417,7 @@ def RunTest(testcode, server):
         outh5shapeletrecordNet = '../data/spbsl/bk4_shapeletNetED.hdf5'
 
         # RecordReindex(h5shapeletrecordNet, worddictpath, subtitledictpath, outh5shapeletrecordNet)
-        CalculateRecallRate_h5file(annotationpath, outh5shapeletrecordED, threhold=0.5, sigma=0.3)
+        CalculateRecallRate_h5file(annotationpath, outh5shapeletrecordED, threhold=0.5, sigma=0.5)
     
     elif testcode == 6:
         h5shapeletrecordED = '../data/spbsl/bk1_shapeletED.hdf5'
@@ -437,7 +434,7 @@ def RunTest(testcode, server):
 
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=5)
+    Parser.add_argument('-t', '--testcode', type=int, default=4)
     Parser.add_argument('-s', '--server', action='store_true')
 
     args = Parser.parse_args()

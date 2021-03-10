@@ -8,6 +8,8 @@ LastEditTime: 2021-03-08 22:41:10
 '''
 import os
 import time
+
+from numpy.core.numeric import _outer_dispatcher
 import utilmx
 import joblib
 import tslearn
@@ -306,7 +308,7 @@ class ShapeletsFinding():
         self.WriteRecords2File(scorekey, score, (1, ), dtype=np.float32)
 
 
-def RunTest(testcode, method, retrain):
+def RunTest(testcode, method, retrain, outputpath=None, featuremode=1):
     motionhdf5filepath = '../data/spbsl/motiondata.hdf5'
     # motionsdictpath = '../data/spbsl/motionsdic.pkl'
     worddictpath = '../data/spbsl/WordDict.pkl'
@@ -331,23 +333,29 @@ def RunTest(testcode, method, retrain):
         #     recordfile = EDrecordfile
         # elif method == 1:
         #     recordfile = Netrecordfile
-        words = ['air']
+        # words = ['air']
         cls_shapelet = ShapeletsFinding(motionhdf5filepath, worddictpath, subtitledictpath)
-        cls_shapelet.train(words, method=method, overwrite=retrain)
+        cls_shapelet.featuremode = featuremode
+        cls_shapelet.train(words, h5recordpath=outputpath, method=method, overwrite=retrain)
 
         # PE.CalculateRecallRate_allh5file(annotationdictpath, recordfile)
         # PE.CalculateRecallRate(annotationdictpath, recordfile)
         
         
 if __name__ == "__main__":
-    import os
+    # import os
     # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--testcode', type=int, default=1)
     parser.add_argument('-r', '--retrain', action='store_true')
     parser.add_argument('-m', '--method', type=int, default=2)
+    parser.add_argument('-f', '--featuremode', type=int, default=2)
+    parser.add_argument('-o', '--outputpath')
     args = parser.parse_args()
     testcode = args.testcode
     retrain = args.retrain
     method = args.method
-    RunTest(testcode, method, retrain)
+    outputpath = args.outputpath
+    featuremode = args.featuremode
+    # print('outputpath', args.outputpath)
+    RunTest(testcode, method, retrain, outputpath=outputpath, featuremode=featuremode)
