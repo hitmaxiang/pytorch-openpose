@@ -4,12 +4,14 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-25 17:55:59
 LastEditors: mario
-LastEditTime: 2021-03-09 22:13:41
+LastEditTime: 2021-03-15 21:58:00
 '''
 
 import os
+from platform import dist
 import re
 import cv2
+from numpy import random
 import utilmx
 import h5py
 import argparse
@@ -178,6 +180,128 @@ def CalculateRecallRate_h5file(annotationh5file, h5recordfile, threhold=0, sigma
             print('the %s group global rate of %s is %f' % (group, key, sum(ratelist)/len(ratelist)))
 
 
+def CalRecallRateOneWord(annotationfilepath, shapeletfilepath, word, sigma, beta=1):
+    # the structure of annotationfile is : word/videokey/offset: [label, begidx, endidx]
+    pass
+    annotationfile = h5py.File(annotationfilepath, mode='r')
+    shapeletfile = h5py.File(shapeletfilepath, mode='r')
+
+    # get the sample idx for the annotion record in the annotationfile
+    annowordgroup = annotationfile[word]
+    rangelist = shapeletfile[word]['sampleidxs']
+    vidxlist = shapeletfile[word]['videokeys']
+    # the structure of IDX is [videokey, offset, label, idx], idx 是该sample在shapeletrecord中的位置
+    Idxs = GetIdxofAnnotation(annowordgroup, rangelist, vidxlist)
+
+    # for a given word in the annotationfile, we should calculate its kinds of indexs
+
+    # positive rate: the rate of the positive sample is true positive
+    Posidxs = [x for x in Idxs if x[2] == 1]
+    pos_ratio = len(Posidxs)/len(Idxs)
+
+    # beta 是只分析距离最近的比例的pos samples
+    pos_num = int(len(rangelist)*beta)
+
+    # recall rate
+    RecallDict = {}
+    levelpattern = r'^\d+$'
+    for levelkey in shapeletfile[word].keys():
+        if re.match(levelpattern, utilmx.Encode(levelkey)) is not None:
+            RecallDict[levelkey] = [0, 0]  # pos_num, foundnum
+            locs = shapeletfile[word][levelkey]['locs'][:]
+
+            dists = shapeletfile[word][levelkey]['dists'][:]
+            sortindexs = list(np.argsort(dists))
+            
+            for item in Posidxs:
+                videokey, offset, label, idx = item
+                if sortindexs.index(idx) > pos_num:
+                    continue
+                RecallDict[levelkey][0] += 1
+
+                a_begin, a_end = annotationfile[word][videokey][offset][1:]
+                l_begin = locs[idx]
+                l_end = l_begin + int(levelkey)
+                
+                if JudgeWhetherFound((a_begin, a_end), (l_begin, l_end), sigma) == 1:
+                    RecallDict[levelkey][1] += 1
+
+    annotationfile.close()
+    shapeletfile.close()
+    return pos_ratio, RecallDict
+
+
+def ResultsAnalysis(annotationfilepath, shapeletfilepath, alpha=0.5, beta=0.3, sigma=0.5):
+    annofile = h5py.File(annotationfilepath, mode='r')
+    shapeletfile = h5py.File(shapeletfilepath, mode='r')
+
+    PosTrue = [0, 0, 0]
+
+    for word in annofile.keys():
+        pos_ratio, recalldict = CalRecallRateOneWord(annotationfilepath, shapeletfilepath, word, sigma, beta)
+        # just find the best score
+        bestscore = 0.0
+        level = ''
+        for levelkey in recalldict.keys():
+            if recalldict[levelkey][0] != 0:
+                score = recalldict[levelkey][1]/recalldict[levelkey][0]
+                if score > bestscore:
+                    bestscore = score
+                    level = levelkey
+        # print("%s, pos_ratio:%f, bestscore %f with level %s" % (word, pos_ratio, bestscore, level))
+
+        # using the score and avgdist to find the best score
+        level = GetBestLevel(shapeletfile[word], beta)
+        score = 0
+        if recalldict[level][0] != 0:
+            score = recalldict[level][1]/recalldict[level][0]
+        # print("%s, pos_ratio:%f, score %f with level %s\n" % (word, pos_ratio, score, level))
+
+        # bestscore = score 
+        
+        if pos_ratio > alpha:
+            PosTrue[0] += 1
+            if bestscore > 0.5:
+                PosTrue[1] += 1
+            if score > 0.5:
+                PosTrue[2] += 1
+    
+    print('the best ture rate is %d/%d-->%f' % (PosTrue[1], PosTrue[0], PosTrue[1]/PosTrue[0]))
+    print('the best ture rate is %d/%d-->%f' % (PosTrue[2], PosTrue[0], PosTrue[2]/PosTrue[0]))
+
+
+def GetBestLevel(shapeletwordgroup, beta, mode=0):
+    levelpattern = r'^\d+$'
+    
+    N = len(shapeletwordgroup['sampleidxs'][:])
+    pos_num = int(N*beta)
+    level = ''
+    
+    if mode == 0:
+        bestscore = 0
+        miniavgdist = float('inf')
+        
+        for levelkey in shapeletwordgroup.keys():
+            if re.match(levelpattern, utilmx.Encode(levelkey)) is not None:
+                dists = shapeletwordgroup[levelkey]['dists'][:]
+                dists = np.sort(dists)
+                # avgdist = sum(dists[:pos_num])/(pos_num - 1)
+                # avgdist = avgdist/int(levelkey)
+                avgdist = np.std(dists[:pos_num])
+                score = shapeletwordgroup[levelkey]['score'][0]
+                if score > bestscore:
+                    bestscore = score
+                    miniavgdist = avgdist
+                    level = levelkey
+                elif bestscore == score:
+                    if avgdist < miniavgdist:
+                        bestscore = score
+                        miniavgdist = avgdist
+                        level = levelkey
+    
+    return level
+                
+                    
 def DistAnalysis(h5recordfile, h5annotationfile):
     h5recfile = h5py.File(h5recordfile, mode='r')
     h5annfile = h5py.File(h5annotationfile, mode='r')
@@ -241,8 +365,11 @@ def GetIdxofAnnotation(annogroup, rangelist, videolist):
 
 def JudgeWhetherFound(annorange, locrange, sigma=0):
     # 判断两个区域范围的重叠区域是否大于一个比例阈值: sigma
+    # 这里面存在一个问题： 覆盖应该是 标记的百分比， 还是shapelet的百分比
     a, b = annorange
     x, y = locrange
+    # a, b = locrange
+    # x, y = annorange
     if y < a or x > b:  # 这种情况下, 两者不重叠
         return -1
     elif x >= a and y <= b:  # 这种情况下, locrange 完全在 annorange 的内部
@@ -289,6 +416,71 @@ def RecordReindex(recordhdf5file, worddictpath, subtitlefilepath, outfilepath):
         utilmx.WriteRecords2File(outfilepath, idxkey, clipidx, (num, 2), dtype=np.int32)
         
     recordfile.close()
+
+
+def VoteForShapelet(shapeletwordgroup, rangelist, m):
+    levelpattern = r'^\d+$'
+    lengths = [int(x[1] - x[0]) for x in rangelist]
+    DataMats = [np.zeros((m,)) for m in lengths]
+
+    for levelkey in shapeletwordgroup.keys():
+        if re.match(levelpattern, levelkey) is not None:
+            locs = shapeletwordgroup[levelkey]['locs'][:]
+            score = shapeletwordgroup[levelkey]['score'][0]
+            # 进行 vote
+            for idx, loc in enumerate(locs):
+                DataMats[idx][loc:loc+int(levelkey)] += score
+    
+    locranges = np.zeros((len(rangelist), 2), dtype=np.uint8)
+    # m = 30
+    for idx, data in enumerate(DataMats):
+        temp = np.zeros((lengths[idx]-m+1,))
+        for i in range(len(temp)):
+            temp[i] = sum(data[i:i+m])
+        j = np.argmax(temp)
+        locranges[idx] = np.array([j, j+m])
+
+    return DataMats, locranges
+    
+
+def TestVoteinfluence(annotationfilepath, shapeletfilepath, m, alpha=0.3, sigma=0.5):
+    annofile = h5py.File(annotationfilepath, mode='r')
+    shapefile = h5py.File(shapeletfilepath, mode='r')
+    
+    words = list(annofile.keys())
+    pos_true = [0, 0]
+    for word in words:
+        rangelist = shapefile[word]['sampleidxs'][:]
+        videokeys = shapefile[word]['videokeys'][:]
+
+        datamats, locranges = VoteForShapelet(shapefile[word], rangelist, m)
+        IDxs = GetIdxofAnnotation(annofile[word], rangelist, videokeys)
+
+        Posidxs = [x for x in IDxs if x[2] == 1]
+        pos_ratio = len(Posidxs)/len(IDxs)
+        if pos_ratio < alpha:
+            continue
+        
+        pos_true[0] += 1
+        recall = 0
+        for item in Posidxs:
+            videokey, offset, label, idx = item
+            begin, end = annofile[word][videokey][offset][1:]
+            lb, le = locranges[idx]
+            if JudgeWhetherFound((begin, end), (lb, le), sigma=sigma) == 1:
+                recall += 1
+            
+            # votedata = datamats[idx]
+            # data = np.zeros_like(votedata)
+            # data[int(begin):int(end)] += 4
+            # plt.plot(votedata, 'b')
+            # plt.plot(data, 'r')
+            # plt.title('%s-%d' % (word, idx))
+            # plt.show()
+        if recall/len(Posidxs) > 0.5:
+            pos_true[1] += 1
+        # get the range according to the vote results
+    print('the best ture rate is %d/%d-->%f' % (pos_true[1], pos_true[0], pos_true[1]/pos_true[0]))
 
 
 def AnticolorOfPicture(imgpath, outpath=None, mode=0):
@@ -413,11 +605,14 @@ def RunTest(testcode, server):
     elif testcode == 5:
         h5shapeletrecordED = '../data/spbsl/bk_shapeletED.hdf5'
         h5shapeletrecordNet = '../data/spbsl/bk_shapeletNetED.hdf5'
-        outh5shapeletrecordED = '../data/spbsl/bk2_shapeletED.hdf5'
+        outh5shapeletrecordED = '../data/spbsl/bk1_shapeletED.hdf5'
         outh5shapeletrecordNet = '../data/spbsl/bk4_shapeletNetED.hdf5'
 
         # RecordReindex(h5shapeletrecordNet, worddictpath, subtitledictpath, outh5shapeletrecordNet)
-        CalculateRecallRate_h5file(annotationpath, outh5shapeletrecordED, threhold=0.5, sigma=0.5)
+        # CalculateRecallRate_h5file(annotationpath, outh5shapeletrecordED, threhold=0.5, sigma=0.5)
+        for beta in np.arange(0.3, 1, 0.1):
+            ResultsAnalysis(annotationpath, outh5shapeletrecordED, alpha=0.3, beta=beta, sigma=0.5)
+
     
     elif testcode == 6:
         h5shapeletrecordED = '../data/spbsl/bk1_shapeletED.hdf5'
@@ -430,11 +625,16 @@ def RunTest(testcode, server):
         augdatafilepath = '../data/spbsl/augdata.hdf5'
 
         AugmentationAnalysis(h5shapeletrecordEDfilepath, augdatafilepath)
+    
+    elif testcode == 8:
+        shapeletfilepath = '../data/spbsl/bk2_shapeletED.hdf5'
+        for m in range(13, 39):
+            TestVoteinfluence(annotationpath, shapeletfilepath, m, alpha=0, sigma=0)
 
 
 if __name__ == "__main__":
     Parser = argparse.ArgumentParser()
-    Parser.add_argument('-t', '--testcode', type=int, default=4)
+    Parser.add_argument('-t', '--testcode', type=int, default=8)
     Parser.add_argument('-s', '--server', action='store_true')
 
     args = Parser.parse_args()
