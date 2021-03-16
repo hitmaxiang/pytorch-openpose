@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-12-25 17:55:59
 LastEditors: mario
-LastEditTime: 2021-03-15 21:58:00
+LastEditTime: 2021-03-16 15:59:07
 '''
 
 import os
@@ -366,10 +366,9 @@ def GetIdxofAnnotation(annogroup, rangelist, videolist):
 def JudgeWhetherFound(annorange, locrange, sigma=0):
     # 判断两个区域范围的重叠区域是否大于一个比例阈值: sigma
     # 这里面存在一个问题： 覆盖应该是 标记的百分比， 还是shapelet的百分比
+
     a, b = annorange
     x, y = locrange
-    # a, b = locrange
-    # x, y = annorange
     if y < a or x > b:  # 这种情况下, 两者不重叠
         return -1
     elif x >= a and y <= b:  # 这种情况下, locrange 完全在 annorange 的内部
@@ -448,13 +447,24 @@ def TestVoteinfluence(annotationfilepath, shapeletfilepath, m, alpha=0.3, sigma=
     shapefile = h5py.File(shapeletfilepath, mode='r')
     
     words = list(annofile.keys())
-    pos_true = [0, 0]
+    pos_true = [0, 0, 0]
     for word in words:
         rangelist = shapefile[word]['sampleidxs'][:]
         videokeys = shapefile[word]['videokeys'][:]
 
         datamats, locranges = VoteForShapelet(shapefile[word], rangelist, m)
         IDxs = GetIdxofAnnotation(annofile[word], rangelist, videokeys)
+
+        # get the level with the best score
+        pos_ratio, recalldict = CalRecallRateOneWord(annotationfilepath, shapeletfilepath, word, sigma, beta=1)
+        bestscore = 0.0
+        level = ''
+        for levelkey in recalldict.keys():
+            if recalldict[levelkey][0] != 0:
+                score = recalldict[levelkey][1]/recalldict[levelkey][0]
+                if score > bestscore:
+                    bestscore = score
+                    level = levelkey
 
         Posidxs = [x for x in IDxs if x[2] == 1]
         pos_ratio = len(Posidxs)/len(IDxs)
@@ -470,17 +480,34 @@ def TestVoteinfluence(annotationfilepath, shapeletfilepath, m, alpha=0.3, sigma=
             if JudgeWhetherFound((begin, end), (lb, le), sigma=sigma) == 1:
                 recall += 1
             
-            # votedata = datamats[idx]
-            # data = np.zeros_like(votedata)
-            # data[int(begin):int(end)] += 4
+            votedata = datamats[idx]
+            data = np.zeros_like(votedata)
+            data[int(begin):int(end)] += 4
+
+            data1 = np.zeros_like(votedata)
+            data1[int(lb):int(le)] += 3.5
+
+            data2 = np.zeros_like(votedata)
+            sb = shapefile[word][level]['locs'][idx]
+            se = sb + int(level)
+            data2[int(sb):int(se)] += 3
+            
             # plt.plot(votedata, 'b')
             # plt.plot(data, 'r')
-            # plt.title('%s-%d' % (word, idx))
+            # plt.plot(data1, 'y.')
+            # plt.plot(data2, '_')
+            # plt.legend(['votedata', 'true', 'vote', 'best'])
+            # plt.title('%s-%d-m:%d' % (word, idx, m))
             # plt.show()
-        if recall/len(Posidxs) > 0.5:
+        print('%s-%d/%d-->%f===%f' % (word, recall, len(Posidxs), recall/len(Posidxs), bestscore))
+        if recall/len(Posidxs) >= 0.5:
             pos_true[1] += 1
+        
+        if bestscore >= 0.5:
+            pos_true[2] += 1
         # get the range according to the vote results
     print('the best ture rate is %d/%d-->%f' % (pos_true[1], pos_true[0], pos_true[1]/pos_true[0]))
+    print('the best ture rate is %d/%d-->%f' % (pos_true[2], pos_true[0], pos_true[2]/pos_true[0]))
 
 
 def AnticolorOfPicture(imgpath, outpath=None, mode=0):
@@ -627,9 +654,9 @@ def RunTest(testcode, server):
         AugmentationAnalysis(h5shapeletrecordEDfilepath, augdatafilepath)
     
     elif testcode == 8:
-        shapeletfilepath = '../data/spbsl/bk2_shapeletED.hdf5'
-        for m in range(13, 39):
-            TestVoteinfluence(annotationpath, shapeletfilepath, m, alpha=0, sigma=0)
+        shapeletfilepath = '../data/spbsl/ShapeletED_new.hdf5'
+        # for m in range(13, 39):
+        TestVoteinfluence(annotationpath, shapeletfilepath, m=30, alpha=0.5, sigma=0)
 
 
 if __name__ == "__main__":

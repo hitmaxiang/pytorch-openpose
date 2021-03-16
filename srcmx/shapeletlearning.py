@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-24 16:25:13
 LastEditors: mario
-LastEditTime: 2021-03-08 22:41:10
+LastEditTime: 2021-03-16 15:59:57
 '''
 import os
 import time
@@ -71,7 +71,7 @@ class ShapeletsFinding():
         '''
         # 抽样得到 pos 以及 neg 的样本的索引以及clip位置
         # sample_indexes 的格式为：[videokey(str), begin, end, label]
-        sample_indexes = self.cls_worddict.ChooseSamples(word, self.delayfx, maxitems=300)
+        sample_indexes = self.cls_worddict.ChooseSamples(word, self.delayfx, maxitems=100)
         samples = []
 
         # 从 motiondict 中 按照上面得到的索引位置提取数据
@@ -313,7 +313,7 @@ def RunTest(testcode, method, retrain, outputpath=None, featuremode=1):
     # motionsdictpath = '../data/spbsl/motionsdic.pkl'
     worddictpath = '../data/spbsl/WordDict.pkl'
     subtitledictpath = '../data/spbsl/SubtitleDict.pkl'
-    annotationdictpath = '../data/spbsl/annotationindex.hdf5'
+    annotationdictpath = '../gui/annotation.hdf5'
 
     if testcode == 0:
         # calculate the shapelet info with all the data

@@ -4,7 +4,7 @@ Version: 2.0
 Autor: mario
 Date: 2020-09-15 14:46:38
 LastEditors: mario
-LastEditTime: 2020-12-07 20:46:12
+LastEditTime: 2021-03-16 15:01:13
 '''
 import os
 import re
@@ -134,7 +134,7 @@ class WordsDict():
 
             latterindex = subindex + 1
             while latterindex < len(subtitledata)-1:
-                if subtitledata[latterindex][1] - bindex >= framediff * delayfx:
+                if subtitledata[latterindex][1] - eindex >= framediff * delayfx:
                     break
                 latterindex += 1
             latterindex = min(latterindex, len(subtitledata)-1)
