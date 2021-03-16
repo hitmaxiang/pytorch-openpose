@@ -177,7 +177,8 @@ class ShapeletsFinding():
     # 使用蛮力 matrix profile 的方式进行 shapelet 的 finding
     def FindShaplets_brute_force_ED(self, samples, sample_indexes, m_len):
         begin_time = time.time()
-        shapeletmodel = SM.ShapeletMatrixModel()
+        # shapeletmodel = SM.ShapeletMatrixModel()
+        shapeletmodel = SM.ShapeletMatrixModel_LR(datamode='x-mirror')
 
         # 对样本集合进行归一化处理
         if self.normmode:

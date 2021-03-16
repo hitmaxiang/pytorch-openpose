@@ -1,8 +1,6 @@
 from os import dup
 import time
-from numpy.lib.function_base import _copy_dispatcher, copy
 import torch
-from torch._C import dtype, float32
 import utilmx
 
 import numpy as np
@@ -216,17 +214,17 @@ class ShapeletMatrixModel_LR():
     def __init__(self, **args):
         # x-mirror, y-mirror 分别是对奇数和偶数特征维度乘以 -1
         self.datamodeoptions = ['normal', 'x-mirror', 'y-mirror']
-        self.datamode = self.datamodeoptions[0]
+        # self.datamode = self.datamodeoptions[0]
         # 表示在得到距离之后，二分类的使用方法
         self.clsoptions = ['fastbipa', 'linear', 'svm']
-        self.clsmethod = self.clsoptions[0]
+        # self.clsmethod = self.clsoptions[0]
         # 表示dis 特征的类型
         self.disnumoptions = ['global', 'trunk', 'joints']
-        self.disnum = self.disnumoptions
+        # self.disnum = self.disnumoptions
 
-        self.alloptionnames = {'datamode': [self.datamodeoptions, self.datamode], 
-                               'clsoptions': [self.clsoptions, self.clsmethod],
-                               'disnum': [self.disnumoptions, self.disnum]}
+        self.alloptionnames = {'datamode': [self.datamodeoptions, 'normal'], 
+                               'clsmethod': [self.clsoptions, 'fastbipa'],
+                               'disnum': [self.disnumoptions, 'global']}
         # 对输入的参数进行解析
         self.argsparse(args)
     
@@ -244,9 +242,15 @@ class ShapeletMatrixModel_LR():
             
             elif value in self.alloptionnames[key][0]:
                 self.alloptionnames[key][1] = value
+                print(self.alloptionnames[key][1])
+                print()
             
             else:
                 raise ValueError
+        
+        self.datamode = self.alloptionnames['datamode'][1]
+        self.clsmethod = self.alloptionnames['clsmethod'][1]
+        self.disnum = self.alloptionnames['disnum'][1]
     
     def preparedata(self, X):
         # X shape batchsize x D x T 或者是 list T x D
@@ -262,7 +266,7 @@ class ShapeletMatrixModel_LR():
             catsamples = torch.reshape(X.permute(0, 2, 1), (-1, D))
             lengths = [T] * N
         # 现在数据catsamples的格式是为 NT x D
-
+        D = catsamples.shape[-1]
         # 下面将根据datamode对数据进行下一步的处理
         if self.datamode in ['x-mirror', 'y-mirror']:
             copysamples = torch.clone(catsamples)
@@ -282,6 +286,7 @@ class ShapeletMatrixModel_LR():
         self.argsparse(options)
         catsamples, lengths = self.preparedata(X)
         N, T = len(lengths), max(lengths)
+        NUM = len(labels)
         
         bestscore, miniloss = 0, float('inf')
         cumlength = np.cumsum([0] + lengths)
@@ -292,60 +297,70 @@ class ShapeletMatrixModel_LR():
         DISMAT_pre = torch.zeros(T+shrink, cumlength[-1]+shrink, dtype=torch.float32)
 
         # 同样也会准备存放处理结果数据的矩阵
-        MinDis = torch.zeros(N, T+shrink, dtype=torch.float32)
-        MinLoc = torch.zeros(N, T+shrink, dtype=torch.int16)
+        # 表示一个sample中可能的shapelet面对所有sample的最小距离
+        MinDismat = torch.zeros(N, T+shrink, dtype=torch.float32)
+        MinLocmat = torch.zeros(N, T+shrink, dtype=torch.int16)
 
         if torch.cuda.is_available():
             catsamples = catsamples.cuda()
             DISMAT_pre = DISMAT_pre.cuda()
-            MinDis = MinDis.cuda()
-            MinLoc = MinLoc.cuda()
+            MinDismat = MinDismat.cuda()
+            MinLocmat = MinLocmat.cuda()
 
-        Dis_sample = np.zeros((N, T-m_len+1))
-        Dis_loc = np.zeros(Dis_sample.shape, dtype=np.int16)
+        Dismat = np.zeros((N, T-m_len+1))
+        Locmat = np.zeros(Dismat.shape, dtype=np.int16)
         dis = np.zeros((N,))
         locs = np.zeros((N,), dtype=np.int16)
+
+        # shapelet 只能来自于 positive samples
         for i in range(len(labels)):
             if labels[i] == 0:
                 continue
 
-            # time_0 = time.time()
+            # 该 positive sample 所在的位置
             begin, end = cumlength[i:i+2]
-            # end = T * (i+1)
             with torch.no_grad():
+                # 注意的一点, 每个positive sample得到的 distance matrix 只填充自己有效的空间
                 DISMAT_pre[:validlengths[i]] = utilmx.matrixprofile_torch(
                     catsamples[begin:end], 
                     catsamples, 
                     m_len, 
                     DISMAT_pre[:validlengths[i]])
 
-                # time_1 = time.time()
-
+                # 从 distance matrix 中找到 (ith, jth) sample 之间的 distance matrix
                 for j in range(N):
-                    b_loc = cumlength[j]
-                    e_loc = cumlength[j+1] + shrink
-                    tempdis = DISMAT_pre[:validlengths[i], b_loc:e_loc]
-                    MinDis[j, :validlengths[i]], MinLoc[j, :validlengths[i]] = torch.min(tempdis, dim=-1)
+                    j_begin, j_end = cumlength[j], cumlength[j+1] + shrink
+                    tempdis = DISMAT_pre[:validlengths[i], j_begin:j_end]
+                    MinDismat[j, :validlengths[i]], MinLocmat[j, :validlengths[i]] = torch.min(tempdis, dim=-1)
+                Dismat[:] = MinDismat.cpu().numpy()
+                Locmat[:] = MinLocmat.cpu().numpy()
 
-                Dis_sample[:] = MinDis.cpu().numpy()
-                Dis_loc[:] = MinLoc.cpu().numpy()
+            for candin_index in range(lengths[i]+shrink):
+                distance = Dismat[:, candin_index]
+                location = Locmat[:, candin_index]
 
-            for candin_index in range(lengths[i]-m_len+1):
-                
-                score = self.Bipartition_score(Dis_sample[:, candin_index], labels.numpy(), bestscore)
-                loss = np.mean(Dis_sample[:, candin_index][labels == 1])
+                if self.datamode in ['x-mirror', 'y-mirror']:
+                    distance = np.reshape(distance, (2, -1))
+                    location = np.reshape(distance, (2, -1))
+                    min_loc = np.argmin(distance, axis=0)
+                    distance = np.min(distance, axis=0)
+                    location = [location[min_loc[k], k] for k in range(len(distance))]
+                    location = np.array(location).astype(np.int16)
+                    
+                score = self.Bipartition_score(distance, labels.numpy(), bestscore)
+                miniloss = np.mean(Dismat[:NUM, candin_index][labels == 1])
 
                 if score > bestscore:
                     bestscore = score
                     shapeindex = i
-                    bestloss = loss
-                    dis[:] = Dis_sample[:, candin_index]
-                    locs[:] = Dis_loc[:, candin_index]
-                elif score == bestscore and loss < bestloss:
+                    bestloss = miniloss
+                    dis[:] = Dismat[:, candin_index]
+                    locs[:] = location
+                elif score == bestscore and miniloss < bestloss:
                     shapeindex = i
-                    bestloss = loss
-                    dis[:] = Dis_sample[:, candin_index]
-                    locs[:] = Dis_loc[:, candin_index]
+                    bestloss = miniloss
+                    dis[:] = Dismat[:, candin_index]
+                    locs[:] = location
             # time_2 = time.time()
             # print('%f----%f' % (time_1-time_0, time_2-time_1))
             # print('%d/%d--->loss: %f, accuracy: %f' % (i, N, bestloss, bestscore))
